@@ -14,7 +14,7 @@ def main():
         print("MPS not available. Running on CPU (will be slower).")
 
     # --- Simulation Parameters ---
-    snr_db_list = np.arange(0, 8, 1)  # 0-7 dB range
+    snr_db_list = np.arange(0, 7, 1)  # 0-7 dB range
     num_trials = 2000  # Higher trials with variance reduction
     
     start_time = time.time()

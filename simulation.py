@@ -149,8 +149,9 @@ def simulate_ber(gamma_opt, gamma_std, snr_db_list, detector='ml', rate=2, num_t
     )
     
     # Apply post-processing smoothing
-    ber_opt_smooth, ber_std_smooth = smooth_ber_curves(
-        snr_db_list, [ber_opt_raw, ber_std_raw], method='savgol'
-    )
+    # ber_opt_smooth, ber_std_smooth = smooth_ber_curves(
+    #     snr_db_list, [ber_opt_raw, ber_std_raw], method='savgol'
+    # )
     
-    return ber_opt_smooth, ber_std_smooth
+    #return ber_opt_smooth, ber_std_smooth
+    return ber_opt_raw, ber_std_raw
