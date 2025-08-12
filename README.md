@@ -81,8 +81,22 @@ gamma_standard = 1 + 1j       # Standard parameter
 
 The simulation generates:
 - Console output showing progress and intermediate results
-- BER performance plot (`ber_plot_m1_optimized.eps`)
+- BER performance plots (e.g., `ml_detection.png`, `mmse_detection.png`, `zf_detection.png`)
 - Performance comparison across different STBC configurations
+
+### Configuration via .env
+
+You can configure runs without exporting shell variables. Create a `.env` in the project root (already git-ignored) with e.g.:
+
+```
+NUM_TRIALS=1000
+GAMMA_TRIALS=200
+GAMMA_GRID_STEPS=11
+GAMMA_REFINE_ROUNDS=2
+MPLBACKEND=Agg
+```
+
+Scripts (`main.py`, `optimize_and_run.py`, `optimize_gamma.py`) will load `.env` automatically. Process env overrides `.env` if both are set.
 
 ## Technical Details
 

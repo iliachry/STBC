@@ -1,21 +1,30 @@
 import torch
 import numpy as np
 import time
+import os
 from simulation import simulate_ber
 from plotting import plot_detection_results, print_performance_analysis
+from env_loader import load_dotenv
+
 
 def main():
-    # --- Setup for M1 GPU (MPS) ---
-    if torch.backends.mps.is_available():
+    # Load environment variables from .env if present
+    load_dotenv()
+
+    # --- Device selection: prefer CUDA (e.g., RTX 3060), then MPS, else CPU ---
+    if torch.cuda.is_available():
+        device = torch.device("cuda")
+        print(f"Using CUDA GPU ({torch.cuda.get_device_name(0)}) for acceleration.")
+    elif torch.backends.mps.is_available():
         device = torch.device("mps")
-        print("Using M1 GPU (MPS) for acceleration.")
+        print("Using M1/M2 GPU (MPS) for acceleration.")
     else:
         device = torch.device("cpu")
-        print("MPS not available. Running on CPU (will be slower).")
+        print("No GPU backend available. Running on CPU (will be slower).")
 
     # --- Simulation Parameters ---
     snr_db_list = np.arange(0, 7, 1)  # 0-7 dB range
-    num_trials = 2000  # Higher trials with variance reduction
+    num_trials = int(os.getenv('NUM_TRIALS', '1000'))  # Default to 1000 trials; overridable via NUM_TRIALS
     
     start_time = time.time()
     
