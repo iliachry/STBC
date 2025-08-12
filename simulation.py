@@ -5,23 +5,13 @@ from biquaternion import BiquaternionSTBC, generate_all_codewords_biquaternion
 from detection import ml_detection_biquaternion, mmse_detection_biquaternion, zf_detection_biquaternion
 
 
-def _print_device(device):
-    if device.type == 'cuda':
-        print(f"[Device] CUDA ({torch.cuda.get_device_name(0)})")
-    elif device.type == 'mps':
-        print("[Device] MPS")
-    else:
-        print("[Device] CPU")
-
-
 def simulate_ber_with_common_random_numbers(gamma_opt, gamma_std, snr_db_list, detector='ml', rate=2, num_trials=1000, device=None):
     """
     Common Random Numbers
     Use identical channel realizations and noise for both gamma values to reduce variance
     """
     if device is None:
-        device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    _print_device(device)
+        device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
     
     # QPSK constellation
     QPSK = torch.tensor([1+1j, 1-1j, -1+1j, -1-1j], dtype=torch.complex64, device=device) / torch.sqrt(torch.tensor(2.0, device=device))
@@ -48,7 +38,7 @@ def simulate_ber_with_common_random_numbers(gamma_opt, gamma_std, snr_db_list, d
         total_errors_opt = 0
         total_errors_std = 0
         
-        print(f"  SNR = {snr_db} dB... ({i+1}/{len(snr_db_list)})")
+        # print(f"  SNR = {snr_db} dB... ({i+1}/{len(snr_db_list)})")
         
         progress_step = max(1, num_trials // 10)
         for trial in range(num_trials):
@@ -120,8 +110,7 @@ def simulate_ber_with_common_random_numbers(gamma_opt, gamma_std, snr_db_list, d
 def simulate_ber_for_gamma(gamma, snr_db_list, detector='ml', rate=2, num_trials=800, device=None):
     """Compute BER for a single gamma across an SNR list using the chosen detector."""
     if device is None:
-        device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
-    _print_device(device)
+        device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
 
     # QPSK constellation
     QPSK = torch.tensor([1+1j, 1-1j, -1+1j, -1-1j], dtype=torch.complex64, device=device) / torch.sqrt(torch.tensor(2.0, device=device))
@@ -143,7 +132,7 @@ def simulate_ber_for_gamma(gamma, snr_db_list, detector='ml', rate=2, num_trials
         total_errors = 0
         progress_step = max(1, num_trials // 10)
 
-        print(f"  [γ={gamma:.3f}] SNR {snr_db} dB ({i+1}/{len(snr_db_list)})")
+        # print(f"  [γ={gamma:.3f}] SNR {snr_db} dB ({i+1}/{len(snr_db_list)})")
         for trial in range(num_trials):
             # if (trial + 1) % progress_step == 0:
             #     print(f"    Trial {trial+1}/{num_trials}")
@@ -185,7 +174,7 @@ def simulate_ber_for_gamma(gamma, snr_db_list, detector='ml', rate=2, num_trials
             total_errors += error_count
 
         ber[i] = total_errors / (num_trials * len(bits))
-        print(f"    BER: {ber[i]:.6f}")
+        #print(f"    BER: {ber[i]:.6f}")
 
     return ber
 

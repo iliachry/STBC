@@ -7,7 +7,7 @@ def plot_detection_results(snr_db_list, ber_opt, ber_std, ber_poor, gamma_opt, g
     plt.semilogy(snr_db_list, ber_opt, 'b-o', linewidth=3, markersize=8, 
                  label=f'Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
     plt.semilogy(snr_db_list, ber_std, 'r--s', linewidth=3, markersize=8, 
-                 label='Standard (γ={gamma_std:.2f})', markerfacecolor='white', markeredgewidth=2)
+                 label=f'Standard (γ={gamma_std:.2f})', markerfacecolor='white', markeredgewidth=2)
     plt.semilogy(snr_db_list, ber_poor, 'm-.^', linewidth=3, markersize=8, 
                  label=f'Poor (γ={gamma_poor:.1f})', markerfacecolor='white', markeredgewidth=2)
     

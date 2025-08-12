@@ -47,19 +47,20 @@ This project implements and simulates the performance of Space-Time Block Coding
 
 ### Running the Simulation
 
-Execute the main simulation script:
+Single entry point (CUDA → MPS → CPU):
 
 ```bash
-python main.py
+python main.py [--gamma-mode optimize|golden] [--snr-start 0 --snr-end 20 --snr-step 2] [--num-trials 1000]
 ```
 
+Examples:
+- Optimize gamma (default): `python main.py --num-trials 1000`
+- Golden gamma: `python main.py --gamma-mode golden --num-trials 1000`
+
 The script will:
-1. Detect and use Apple Silicon GPU (MPS) if available
-2. Run BER simulations for three different configurations:
-   - Optimized Rate-2 (γ = 0.4 + 1.1j)
-   - Non-optimized Rate-2 (γ = 1 + j)
-   - Robust Rate-1 (γ = 0)
-3. Generate and save BER performance plots
+1. Detect and use CUDA (RTX), else MPS, else CPU
+2. If optimize mode: grid-search best γ before running
+3. Run BER simulations and generate plots
 
 ### Configuration
 
