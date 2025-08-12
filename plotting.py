@@ -20,43 +20,10 @@ def plot_detection_results(snr_db_list, ber_opt, ber_std, ber_poor, gamma_opt, g
     plt.ylim(1e-5, 1.0)
     plt.xlim(0, max(snr_db_list))
     
-    # # Add enhancement annotations
-    # if detector_name == 'ML':
-    #     plt.text(0.02, 0.02, 
-    #              'Variance Reduction Applied:\n' +
-    #              '✓ Common Random Numbers\n' +
-    #              '✓ Golden Ratio γ Values\n' +
-    #              '✓ Savitzky-Golay Smoothing\n' +
-    #              '✓ Enhanced Statistical Accuracy',
-    #              transform=plt.gca().transAxes, fontsize=11,
-    #              verticalalignment='bottom', bbox=dict(boxstyle="round,pad=0.4", facecolor='lightgreen', alpha=0.8))
-    
-    # # Add annotations for optimization benefits
-    # if detector_name == 'MMSE' and len(snr_db_list) > 4:
-    #     mid_snr = snr_db_list[len(snr_db_list)//2]
-    #     mid_idx = len(snr_db_list)//2
-    #     if ber_std[mid_idx] > ber_opt[mid_idx]:
-    #         plt.annotate('Clear Optimization\nBenefit Visible', 
-    #                     xy=(mid_snr, ber_std[mid_idx]), 
-    #                     xytext=(mid_snr + 3, ber_std[mid_idx] * 3),
-    #                     arrowprops=dict(arrowstyle='->', color='darkgreen', alpha=0.9, lw=3),
-    #                     fontsize=12, ha='center', fontweight='bold',
-    #                     bbox=dict(boxstyle="round,pad=0.4", facecolor='lightgreen', alpha=0.8))
-    
-    # if detector_name == 'ZF' and len(snr_db_list) > 3:
-    #     high_snr = snr_db_list[-4]
-    #     high_idx = -4
-    #     if ber_std[high_idx] > ber_opt[high_idx]:
-    #         plt.annotate('Maximum\nOptimization\nBenefit', 
-    #                     xy=(high_snr, ber_opt[high_idx]), 
-    #                     xytext=(high_snr - 4, ber_opt[high_idx] * 0.1),
-    #                     arrowprops=dict(arrowstyle='->', color='red', alpha=0.9, lw=3),
-    #                     fontsize=12, ha='center', fontweight='bold',
-    #                     bbox=dict(boxstyle="round,pad=0.4", facecolor='lightyellow', alpha=0.8))
-    
     plt.tight_layout()
     plt.savefig(save_filename, format='png', dpi=300, bbox_inches='tight')
     plt.show()
+
 
 def print_performance_analysis(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf):
     """Print detailed performance analysis"""
@@ -89,3 +56,45 @@ def print_performance_analysis(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse
             if ber_std_zf[idx] > 0:
                 zf_improvement = (ber_std_zf[idx] - ber_opt_zf[idx]) / ber_std_zf[idx] * 100
                 print(f"    → Gain:       {zf_improvement:.1f}%")
+
+
+def save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf, filename='performance_table.png'):
+    """Render performance analysis as a table and save to PNG (no CLI prints)."""
+    # Build table data
+    headers = [
+        'SNR (dB)',
+        'ML Opt', 'ML Std', 'ML Gain %',
+        'MMSE Opt', 'MMSE Std', 'MMSE Gain %',
+        'ZF Opt', 'ZF Std', 'ZF Gain %'
+    ]
+    rows = []
+    for i, snr in enumerate(snr_db_list):
+        # Gains with safe guards
+        ml_gain = ((ber_std_ml[i] - ber_opt_ml[i]) / ber_std_ml[i] * 100.0) if ber_std_ml[i] > 0 else 0.0
+        mmse_gain = ((ber_std_mmse[i] - ber_opt_mmse[i]) / ber_std_mmse[i] * 100.0) if ber_std_mmse[i] > 0 else 0.0
+        zf_gain = ((ber_std_zf[i] - ber_opt_zf[i]) / ber_std_zf[i] * 100.0) if ber_std_zf[i] > 0 else 0.0
+        rows.append([
+            f"{snr}",
+            f"{ber_opt_ml[i]:.3e}", f"{ber_std_ml[i]:.3e}", f"{ml_gain:.1f}",
+            f"{ber_opt_mmse[i]:.3e}", f"{ber_std_mmse[i]:.3e}", f"{mmse_gain:.1f}",
+            f"{ber_opt_zf[i]:.3e}", f"{ber_std_zf[i]:.3e}", f"{zf_gain:.1f}"
+        ])
+
+    # Figure setup sized by number of rows
+    fig_height = max(2.5, 0.5 + 0.35 * len(rows))
+    fig, ax = plt.subplots(figsize=(12, fig_height))
+    ax.axis('off')
+
+    table = ax.table(cellText=rows, colLabels=headers, loc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(10)
+    table.scale(1, 1.2)
+
+    # Bold header row
+    for (row, col), cell in table.get_celld().items():
+        if row == 0:
+            cell.set_text_props(fontweight='bold')
+
+    plt.tight_layout()
+    fig.savefig(filename, format='png', dpi=300, bbox_inches='tight')
+    plt.close(fig)

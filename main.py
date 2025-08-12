@@ -2,11 +2,33 @@ import torch
 import numpy as np
 import time
 import os
+from pathlib import Path
 import argparse
-from simulation import simulate_ber
-from plotting import plot_detection_results, print_performance_analysis
-from env_loader import load_dotenv
+from simulation import simulate_ber_three
+from plotting import plot_detection_results, save_performance_table_png
 from optimize_gamma import optimize_gamma
+
+
+def load_dotenv(env_path: str | None = None) -> None:
+    """Load key=value pairs from a .env file into os.environ (non-destructive for existing keys)."""
+    path = Path(env_path) if env_path else Path.cwd() / ".env"
+    if not path.exists():
+        return
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip('"').strip("'")
+                os.environ.setdefault(key, value)
+    except Exception:
+        # Do not fail app startup if .env parsing fails
+        pass 
 
 
 def parse_args():
@@ -87,18 +109,15 @@ def main():
     print(f"  Standard:  {gamma_std:.3f}")
     print(f"  Poor:      {gamma_poor:.3f}")
 
-    # Run Simulations
+    # Run Simulations with common random numbers across all three gammas
     print("\nRunning ML Detection...")
-    ber_opt_ml, ber_std_ml = simulate_ber(gamma_opt, gamma_std, snr_db_list, 'ml', 2, num_trials, device)
-    ber_poor_ml, _ = simulate_ber(gamma_poor, gamma_std, snr_db_list, 'ml', 2, max(1, num_trials // 2), device)
+    ber_opt_ml, ber_std_ml, ber_poor_ml = simulate_ber_three(gamma_opt, gamma_std, gamma_poor, snr_db_list, 'ml', 2, num_trials, device)
 
     print("\nRunning MMSE Detection...")
-    ber_opt_mmse, ber_std_mmse = simulate_ber(gamma_opt, gamma_std, snr_db_list, 'mmse', 2, num_trials, device)
-    ber_poor_mmse, _ = simulate_ber(gamma_poor, gamma_std, snr_db_list, 'mmse', 2, max(1, num_trials // 2), device)
+    ber_opt_mmse, ber_std_mmse, ber_poor_mmse = simulate_ber_three(gamma_opt, gamma_std, gamma_poor, snr_db_list, 'mmse', 2, num_trials, device)
 
     print("\nRunning ZF Detection...")
-    ber_opt_zf, ber_std_zf = simulate_ber(gamma_opt, gamma_std, snr_db_list, 'zf', 2, num_trials, device)
-    ber_poor_zf, _ = simulate_ber(gamma_poor, gamma_std, snr_db_list, 'zf', 2, max(1, num_trials // 2), device)
+    ber_opt_zf, ber_std_zf, ber_poor_zf = simulate_ber_three(gamma_opt, gamma_std, gamma_poor, snr_db_list, 'zf', 2, num_trials, device)
 
     end_time = time.time()
     print(f"\nAll simulations completed in {end_time - start_time:.2f} seconds.")
@@ -113,8 +132,14 @@ def main():
     plot_detection_results(snr_db_list, ber_opt_zf, ber_std_zf, ber_poor_zf, gamma_opt, gamma_std, gamma_poor,
                           'ZF', 'zf_detection.png')
 
-    # Performance Analysis
-    print_performance_analysis(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf)
+    # Save performance table as PNG instead of CLI prints
+    save_performance_table_png(
+        snr_db_list,
+        ber_opt_ml, ber_std_ml,
+        ber_opt_mmse, ber_std_mmse,
+        ber_opt_zf, ber_std_zf,
+        filename='performance_table.png'
+    )
 
 
 if __name__ == "__main__":

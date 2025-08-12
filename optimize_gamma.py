@@ -3,7 +3,6 @@ import cmath
 import torch
 from simulation import simulate_ber_for_gamma
 import os
-from env_loader import load_dotenv
 
 
 def complex_grid(r_ranges, i_ranges, steps):
@@ -25,7 +24,6 @@ def optimize_gamma(initial_grid_steps=11, refine_rounds=2, refine_factor=0.4, sn
     if snr_db_list is None:
         snr_db_list = np.arange(2, 9, 2)  # validation SNRs: 2,4,6,8 dB (if extended)
 
-    print(f"[GammaOpt] Device: {'CUDA ' + torch.cuda.get_device_name(0) if device.type=='cuda' else device.type.upper()}")
     print(f"[GammaOpt] SNR validation grid: {snr_db_list}")
 
     # Coarse search region
@@ -57,13 +55,4 @@ def optimize_gamma(initial_grid_steps=11, refine_rounds=2, refine_factor=0.4, sn
         r_bounds = (r_center - r_span/2, r_center + r_span/2)
         i_bounds = (i_center - i_span/2, i_center + i_span/2)
 
-    return best_gamma, best_score
-
-
-if __name__ == '__main__':
-    load_dotenv()
-    device = torch.device("cuda" if torch.cuda.is_available() else ("mps" if torch.backends.mps.is_available() else "cpu"))
-    snr_db_list = np.arange(0, 13, 3)  # 0..12 dB validation
-    trials = int(os.getenv('GAMMA_TRIALS', '300'))
-    gamma, score = optimize_gamma(snr_db_list=snr_db_list, trials_per_gamma=trials, device=device)
-    print(f"Best gamma found: {gamma} with avg BER {score}") 
+    return best_gamma, best_score 
