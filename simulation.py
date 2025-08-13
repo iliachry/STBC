@@ -64,6 +64,7 @@ def simulate_ber_common(gammas, snr_db_list, detector="ml", rate=2, num_trials=8
     ber_per_gamma = [np.zeros(len(snr_db_list)) for _ in gammas]
 
     for snr_idx, snr_db in enumerate(snr_db_list):
+        print(f"  SNR = {snr_db} dB... ({snr_idx+1}/{len(snr_db_list)})")
         snr_linear = 10 ** (snr_db / 10)
         total_errors = [0 for _ in gammas]
 
@@ -102,6 +103,7 @@ def simulate_ber_common(gammas, snr_db_list, detector="ml", rate=2, num_trials=8
 
         for g_idx in range(len(gammas)):
             ber_per_gamma[g_idx][snr_idx] = total_errors[g_idx] / (num_trials * len(bits))
+            print(f"  BER for gamma {gammas[g_idx]}: {ber_per_gamma[g_idx][snr_idx]:.6f}")
 
     return ber_per_gamma
 

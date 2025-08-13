@@ -87,7 +87,7 @@ def main():
     start_time = time.time()
 
     if args.gamma_mode == "optimize":
-        print("Optimizing gamma (ML-based grid search)...")
+        print("Optimizing gamma...")
         val_snr = np.arange(args.snr_start, args.snr_end + 1, args.opt_snr_step)
         gamma_opt, best_score = optimize_gamma(
             initial_grid_steps=args.gamma_grid_steps,
