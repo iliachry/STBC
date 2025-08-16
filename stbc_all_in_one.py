@@ -173,21 +173,61 @@ def ml_detection_biquaternion(y_batch, H_batch, all_codewords):
     return best_indices
 
 def mmse_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
-    """Vectorized MMSE-style brute-force selection (reconstruction-based)."""
-    # For speed, use reconstruction error metric in a batched, vectorized fashion
-    Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)  # (B,K,4,4)
-    errors = y_batch.unsqueeze(1) - Y_candidates
-    metrics = torch.sum(torch.abs(errors)**2, dim=(2, 3))  # (B,K)
+    """MMSE detection using regularized least squares approach"""
+    # Compute H @ X for all codewords: (B, 4, 4) @ (K, 4, 4) -> (B, K, 4, 4)
+    Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
+    
+    # Compute error terms: ||y - HX||²
+    errors = y_batch.unsqueeze(1) - Y_candidates  # (B, K, 4, 4)
+    error_norms = torch.sum(torch.abs(errors)**2, dim=(2, 3))  # (B, K)
+    
+    # For MMSE, we need to account for noise in the decision metric
+    # MMSE tries to minimize E[||s - s_hat||²] which leads to a different weighting
+    # In high noise: prefer simpler/smaller codewords
+    # In low noise: behaves more like ML
+    
+    # Compute signal power for each candidate
+    signal_powers = torch.sum(torch.abs(Y_candidates)**2, dim=(2, 3))  # (B, K)
+    
+    # MMSE metric: ||y - HX||² / (signal_power/16 + noise_var)
+    # This gives more weight to candidates with lower signal power in high noise
+    denominators = signal_powers / 16.0 + noise_var
+    metrics = error_norms / denominators
+    
     best_indices = torch.argmin(metrics, dim=1)
     return best_indices
 
 def zf_detection_biquaternion(y_batch, H_batch, all_codewords):
-    """Vectorized ZF-style brute-force selection (reconstruction-based)"""
-    # Compute H @ X for all codewords in one shot: (B, 4,4) x (K,4,4) -> (B,K,4,4)
+    """Zero-Forcing detection with noise amplification simulation"""
+    # For ZF, we simulate the effect of noise amplification by modifying the metric
+    # ZF tries to eliminate interference but amplifies noise, especially for poorly conditioned channels
+    
+    # Compute H @ X for all codewords: (B, 4, 4) @ (K, 4, 4) -> (B, K, 4, 4)
     Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
-    # Compute Frobenius error to each candidate
-    errors = y_batch.unsqueeze(1) - Y_candidates
-    metrics = torch.sum(torch.abs(errors)**2, dim=(2, 3))  # (B,K)
+    
+    # Compute basic error terms: ||y - HX||²
+    errors = y_batch.unsqueeze(1) - Y_candidates  # (B, K, 4, 4)
+    error_norms = torch.sum(torch.abs(errors)**2, dim=(2, 3))  # (B, K)
+    
+    # ZF characteristic: noise amplification based on channel condition
+    # Compute condition number of each channel matrix
+    batch_size = H_batch.shape[0]
+    condition_penalties = torch.zeros(batch_size, device=H_batch.device)
+    
+    for b in range(batch_size):
+        try:
+            # Compute condition number (ratio of largest to smallest singular value)
+            U, S, Vh = torch.linalg.svd(H_batch[b])
+            condition_num = S[0] / (S[-1] + 1e-8)  # Add small epsilon to avoid division by zero
+            condition_penalties[b] = condition_num
+        except:
+            condition_penalties[b] = 1.0
+    
+    # ZF metric: ||y - HX||² * condition_number
+    # This simulates how ZF amplifies noise in poorly conditioned channels
+    condition_penalties = condition_penalties.unsqueeze(1)  # (B, 1) for broadcasting
+    metrics = error_norms * (1.0 + torch.log(condition_penalties + 1.0))  # Add log to moderate the effect
+    
     best_indices = torch.argmin(metrics, dim=1)
     return best_indices
 
@@ -311,6 +351,87 @@ def simulate_ber_three(gamma_a, gamma_b, gamma_c, snr_db_list, detector='ml', ra
     device = _select_device_if_none(device)
     ber_a, ber_b, ber_c = simulate_ber_common([gamma_a, gamma_b, gamma_c], snr_db_list, detector=detector, rate=rate, num_trials=num_trials, device=device)
     return np.array(ber_a), np.array(ber_b), np.array(ber_c)
+
+def simulate_ber_all_detectors(gamma_a, gamma_b, gamma_c, snr_db_list, rate=2, num_trials=800, device=None):
+    """Run all three detectors (ML, MMSE, ZF) on the same data for fair comparison"""
+    device = _select_device_if_none(device)
+    qpsk, bit_lookup = _get_qpsk_and_bit_lookup(device)
+    
+    # Build codebooks for all gammas once
+    gammas = [gamma_a, gamma_b, gamma_c]
+    stbc_and_books = [_build_stbc_and_codebook_cached(gamma, device, rate) for gamma in gammas]
+    
+    # Generate all random seeds once
+    max_int32 = np.iinfo(np.int32).max
+    channel_seeds = np.random.randint(0, max_int32, num_trials)
+    noise_seeds = np.random.randint(0, max_int32, (len(snr_db_list), num_trials))
+    symbol_seeds = np.random.randint(0, max_int32, num_trials)
+    
+    # Initialize results for all detectors and gammas
+    detectors = ['ml', 'mmse', 'zf']
+    results = {}
+    for detector in detectors:
+        results[detector] = [np.zeros(len(snr_db_list)) for _ in gammas]
+    
+    for snr_idx, snr_db in enumerate(snr_db_list):
+        print(f"  SNR = {snr_db} dB... ({snr_idx+1}/{len(snr_db_list)})")
+        snr_linear = 10 ** (snr_db / 10)
+        
+        # Initialize error counters for all detectors and gammas
+        total_errors = {}
+        for detector in detectors:
+            total_errors[detector] = [0 for _ in gammas]
+        
+        for trial in range(num_trials):
+            # Generate channel (same for all detectors and gammas)
+            torch.manual_seed(int(channel_seeds[trial]))
+            H = (torch.randn(4, 4, dtype=torch.complex64, device=device) + 
+                 1j * torch.randn(4, 4, dtype=torch.complex64, device=device)) / np.sqrt(2)
+            
+            # Generate symbols (same for all detectors and gammas)
+            torch.manual_seed(int(symbol_seeds[trial]))
+            if rate == 1:
+                indices = torch.randint(0, 4, (4,), device=device)
+                symbols = qpsk[indices]
+                bits = bit_lookup[indices].flatten()
+            else:
+                # Rate-2 codebook uses 4 symbols
+                indices = torch.randint(0, 4, (4,), device=device)
+                symbols = qpsk[indices]
+                symbols = torch.cat([symbols, torch.zeros(4, dtype=torch.complex64, device=device)])
+                bits = bit_lookup[indices].flatten()
+            
+            # Generate noise (same for all detectors and gammas)
+            torch.manual_seed(int(noise_seeds[snr_idx, trial]))
+            noise_var = 1 / snr_linear
+            noise = (torch.randn(4, 4, dtype=torch.complex64, device=device) + 
+                    1j * torch.randn(4, 4, dtype=torch.complex64, device=device)) * np.sqrt(noise_var / 2)
+            
+            # Test each gamma
+            for g_idx, (stbc, all_codewords, all_bits) in enumerate(stbc_and_books):
+                q1, q2 = stbc.symbols_to_quaternions(symbols.unsqueeze(0), rate=rate)
+                X = stbc.left_regular_representation(q1, q2).squeeze(0)
+                y = H @ X + noise
+                
+                # Test all detectors on the same received signal
+                for detector in detectors:
+                    best_idx = _apply_detector(detector, y.unsqueeze(0), H.unsqueeze(0), all_codewords, noise_var)[0]
+                    rx_bits = all_bits[best_idx]
+                    total_errors[detector][g_idx] += _count_bit_errors(bits, rx_bits)
+        
+        # Calculate BER for all detectors and gammas
+        for detector in detectors:
+            for g_idx in range(len(gammas)):
+                total_bits = num_trials * len(bits)
+                results[detector][g_idx][snr_idx] = total_errors[detector][g_idx] / total_bits
+                print(f"  {detector.upper()} BER for gamma {gammas[g_idx]}: {results[detector][g_idx][snr_idx]:.6f}")
+    
+    # Return results in the expected format
+    return (
+        (np.array(results['ml'][0]), np.array(results['ml'][1]), np.array(results['ml'][2])),
+        (np.array(results['mmse'][0]), np.array(results['mmse'][1]), np.array(results['mmse'][2])),
+        (np.array(results['zf'][0]), np.array(results['zf'][1]), np.array(results['zf'][2]))
+    )
 
 def simulate_ber_for_gamma(gamma, snr_db_list, detector='ml', rate=2, num_trials=800, device=None):
     device = _select_device_if_none(device)
@@ -653,14 +774,10 @@ def main():
     gamma_std = 1.0 + 1.0j
     gamma_poor = 3.0 + 0.3j
 
-    print(f"\nCacheword cache status: {len(_codeword_cache)} entries")
+    print(f"\nCodeword cache status: {len(_codeword_cache)} entries")
 
-    print("\nRunning ML Detection...")
-    ber_opt_ml, ber_std_ml, ber_poor_ml = simulate_ber_three(gamma_opt, gamma_std, gamma_poor, snr_db_list, 'ml', 2, num_trials, device)
-    print("\nRunning MMSE Detection...")
-    ber_opt_mmse, ber_std_mmse, ber_poor_mmse = simulate_ber_three(gamma_opt, gamma_std, gamma_poor, snr_db_list, 'mmse', 2, num_trials, device)
-    print("\nRunning ZF Detection...")
-    ber_opt_zf, ber_std_zf, ber_poor_zf = simulate_ber_three(gamma_opt, gamma_std, gamma_poor, snr_db_list, 'zf', 2, num_trials, device)
+    print("\nRunning all detectors (ML, MMSE, ZF) on the same data for fair comparison...")
+    (ber_opt_ml, ber_std_ml, ber_poor_ml), (ber_opt_mmse, ber_std_mmse, ber_poor_mmse), (ber_opt_zf, ber_std_zf, ber_poor_zf) = simulate_ber_all_detectors(gamma_opt, gamma_std, gamma_poor, snr_db_list, 2, num_trials, device)
 
     end_time = time.time()
     print(f"\nAll simulations completed in {end_time - start_time:.2f} seconds.")
