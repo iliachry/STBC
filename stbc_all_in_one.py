@@ -107,8 +107,8 @@ class BiquaternionSTBC:
             s = symbols.view(batch_size, 8)
             q1 = self.Q1.create_quaternion(s[..., 0].real, s[..., 0].imag, 
                                           s[..., 1].real, s[..., 1].imag)
-            q2 = self.Q1.create_quaternion(s[..., 4].real, s[..., 4].imag, 
-                                          s[..., 5].real, s[..., 5].imag)
+            q2 = self.Q1.create_quaternion(s[..., 2].real, s[..., 2].imag, 
+                                          s[..., 3].real, s[..., 3].imag)
         return q1, q2
 
     def extract_symbols_from_quaternions(self, q1, q2, rate=2):
@@ -122,10 +122,10 @@ class BiquaternionSTBC:
             symbols = torch.stack([
                 q1[..., 0] + 1j * q1[..., 1],  # s0
                 q1[..., 2] + 1j * q1[..., 3],  # s1
-                torch.zeros_like(q1[..., 0]),  # s2 (placeholder)
-                torch.zeros_like(q1[..., 0]),  # s3 (placeholder)
-                q2[..., 0] + 1j * q2[..., 1],  # s4
-                q2[..., 2] + 1j * q2[..., 3],  # s5
+                q2[..., 0] + 1j * q2[..., 1],  # s2
+                q2[..., 2] + 1j * q2[..., 3],  # s3
+                torch.zeros_like(q2[..., 0]),  # s4 (placeholder)
+                torch.zeros_like(q2[..., 0]),  # s5 (placeholder)
                 torch.zeros_like(q2[..., 0]),  # s6 (placeholder)
                 torch.zeros_like(q2[..., 0]),  # s7 (placeholder)
             ], dim=-1)
@@ -140,9 +140,8 @@ def generate_all_codewords_biquaternion(stbc, rate=2):
         # Rate-1: 4 symbols -> 4^4 = 256 codewords
         symbol_indices = list(product(range(4), repeat=4))
     else:
-        # Rate-2: 8 symbols -> 4^8 = 65536 codewords (too many!)
-        # Use reduced set for computational feasibility
-        symbol_indices = list(product(range(4), repeat=6))  # 4^6 = 4096 codewords
+        # Rate-2: 4 symbols -> 4^4 = 256 codewords
+        symbol_indices = list(product(range(4), repeat=4))
     
     all_codewords, all_bits = [], []
     for indices in symbol_indices:
@@ -279,8 +278,10 @@ def simulate_ber_common(gammas, snr_db_list, detector='ml', rate=2, num_trials=8
                 symbols = qpsk[indices]
                 bits = bit_lookup[indices].flatten()
             else:
-                indices = torch.randint(0, 4, (8,), device=device)
+                # Rate-2 codebook uses 4 symbols
+                indices = torch.randint(0, 4, (4,), device=device)
                 symbols = qpsk[indices]
+                symbols = torch.cat([symbols, torch.zeros(4, dtype=torch.complex64, device=device)])
                 bits = bit_lookup[indices].flatten()
             
             # Generate noise

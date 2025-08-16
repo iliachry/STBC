@@ -98,7 +98,7 @@ def main():
         )
         print(f"Best gamma found: {gamma_opt} (avg BER: {best_score:.4e} over {val_snr} dB)")
     else:
-        gamma_opt = 0.618 + 1.0j  # Golden ratio-based (proven good)
+        gamma_opt = 0.0 - 1.0j  # Golden ratio-based (proven good)
         print(f"Using golden-ratio gamma: {gamma_opt:.3f}")
 
     gamma_std = 1.0 + 1.0j        # Standard reference
