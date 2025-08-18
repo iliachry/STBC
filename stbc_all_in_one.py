@@ -166,148 +166,316 @@ def generate_all_codewords_biquaternion(stbc, rate=2):
 # ==========
 
 def ml_detection_biquaternion(y_batch, H_batch, all_codewords):
+    """Fully vectorized ML detection - optimal performance"""
+    # Compute all possible received signals: H @ X for all codewords
     Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
+    
+    # Compute error norms for all combinations at once
     errors = y_batch.unsqueeze(1) - Y_candidates
     metrics = torch.sum(torch.abs(errors)**2, dim=(2, 3))
+    
+    # Find best codeword for each batch element
     best_indices = torch.argmin(metrics, dim=1)
     return best_indices
 
 def mmse_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
-    """MMSE detection using regularized least squares approach"""
-    # Compute H @ X for all codewords: (B, 4, 4) @ (K, 4, 4) -> (B, K, 4, 4)
-    Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
+    """True MMSE detection: first compute MMSE estimate, then find closest codeword"""
+    batch_size = y_batch.shape[0]
+    device = y_batch.device
     
-    # Compute error terms: ||y - HX||²
-    errors = y_batch.unsqueeze(1) - Y_candidates  # (B, K, 4, 4)
-    error_norms = torch.sum(torch.abs(errors)**2, dim=(2, 3))  # (B, K)
+    # This is the theoretically correct MMSE approach:
+    # 1. Compute MMSE estimate: X_mmse = (H^H H + σ²I)^(-1) H^H y
+    # 2. Find closest valid codeword to X_mmse
     
-    # For MMSE, we need to account for noise in the decision metric
-    # MMSE tries to minimize E[||s - s_hat||²] which leads to a different weighting
-    # In high noise: prefer simpler/smaller codewords
-    # In low noise: behaves more like ML
+    # This is different from ML which directly minimizes ||y - HX||²
     
-    # Compute signal power for each candidate
-    signal_powers = torch.sum(torch.abs(Y_candidates)**2, dim=(2, 3))  # (B, K)
+    H_h = H_batch.transpose(-2, -1).conj()
+    HH = torch.matmul(H_h, H_batch)
     
-    # MMSE metric: ||y - HX||² / (signal_power/16 + noise_var)
-    # This gives more weight to candidates with lower signal power in high noise
-    denominators = signal_powers / 16.0 + noise_var
-    metrics = error_norms / denominators
+    # Regularization based on noise level
+    # This is the key difference from ZF - we always add noise variance
+    I = torch.eye(4, device=device, dtype=H_batch.dtype).unsqueeze(0).expand(batch_size, -1, -1)
+    HH_reg = HH + noise_var * I
     
-    best_indices = torch.argmin(metrics, dim=1)
+    try:
+        # Method 1: Direct inversion (more stable for well-conditioned matrices)
+        HH_inv = torch.linalg.inv(HH_reg)
+        X_mmse = torch.matmul(torch.matmul(HH_inv, H_h), y_batch)
+    except:
+        # Method 2: Cholesky decomposition (if direct inversion fails)
+        try:
+            L = torch.linalg.cholesky(HH_reg)
+            H_h_y = torch.matmul(H_h, y_batch)
+            z = torch.linalg.solve_triangular(L, H_h_y, upper=False)
+            X_mmse = torch.linalg.solve_triangular(L.transpose(-2, -1).conj(), z, upper=True)
+        except:
+            # Fallback to pseudo-inverse
+            X_mmse = torch.matmul(torch.linalg.pinv(H_batch), y_batch)
+    
+    # Now find closest codeword to MMSE estimate
+    # This is where MMSE differs from ML - we're finding closest to X_mmse, not minimizing ||y - HX||²
+    X_mmse_exp = X_mmse.unsqueeze(1)  # (batch, 1, 4, 4)
+    all_codewords_exp = all_codewords.unsqueeze(0)  # (1, num_codewords, 4, 4)
+    
+    # Euclidean distance in codeword space
+    distances = torch.sum(torch.abs(X_mmse_exp - all_codewords_exp)**2, dim=(2, 3))
+    
+    best_indices = torch.argmin(distances, dim=1)
     return best_indices
 
 def zf_detection_biquaternion(y_batch, H_batch, all_codewords):
-    """Original Zero-Forcing detection: invert channel first, then find closest codeword"""
+    """Pure Zero-Forcing detection without enhancements"""
     batch_size = y_batch.shape[0]
-    num_codewords = all_codewords.shape
+    device = y_batch.device
     
-    best_indices = torch.zeros(batch_size, dtype=torch.long, device=y_batch.device)
-    
-    for b in range(batch_size):
-        H = H_batch[b]  # (4, 4)
-        y = y_batch[b]  # (4, 4)
+    try:
+        # Simple pseudo-inverse without SVD thresholding
+        # This is true ZF - it will amplify noise for ill-conditioned channels
+        H_pinv_batch = torch.linalg.pinv(H_batch)
         
-        try:
-            # ZF Step 1: Invert the channel using pseudo-inverse
-            # This is the key difference from ML - we first try to "undo" the channel
-            H_pinv = torch.linalg.pinv(H)  # (4, 4)
-            X_zf = H_pinv @ y  # ZF estimate: "undo" channel effect
-            
-            # ZF Step 2: Find closest valid codeword to the ZF estimate
-            # This is where ZF differs from ML - we look in the transmitted signal space
-            best_metric = float('inf')
-            best_idx = 0
-            
-            for k in range(num_codewords):
-                X_k = all_codewords[k]
-                # ZF metric: distance in the transmitted codeword space
-                error = X_zf - X_k
-                metric = torch.sum(torch.abs(error)**2).item()
-                
-                if metric < best_metric:
-                    best_metric = metric
-                    best_idx = k
-                    
-        except:
-            # Fallback to ML if ZF matrix inversion fails
-            best_metric = float('inf')
-            best_idx = 0
-            
-            for k in range(num_codewords):
-                X_k = all_codewords[k]
-                HX = H @ X_k
-                error = y - HX
-                metric = torch.sum(torch.abs(error)**2).item()
-                
-                if metric < best_metric:
-                    best_metric = metric
-                    best_idx = k
+        # Direct ZF estimate: X = H^+ y
+        X_zf_batch = torch.matmul(H_pinv_batch, y_batch)
         
-        best_indices[b] = best_idx
+        # Find closest codeword to ZF estimate
+        # No power normalization - just direct distance
+        X_zf_exp = X_zf_batch.unsqueeze(1)  # (batch, 1, 4, 4)
+        all_codewords_exp = all_codewords.unsqueeze(0)  # (1, num_codewords, 4, 4)
+        
+        # Simple Euclidean distance
+        distances = torch.sum(torch.abs(X_zf_exp - all_codewords_exp)**2, dim=(2, 3))
+        best_indices = torch.argmin(distances, dim=1)
+        
+    except Exception as e:
+        # Fallback to ML if inversion fails
+        Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
+        errors = y_batch.unsqueeze(1) - Y_candidates
+        metrics = torch.sum(torch.abs(errors)**2, dim=(2, 3))
+        best_indices = torch.argmin(metrics, dim=1)
     
     return best_indices
 
 def adaptive_reg_factor(noise_var):
-    """Adaptive regularization based on noise level"""
+    """Adaptive regularization based on noise level - optimized for STBC"""
     snr_linear = 1 / noise_var
+    # More aggressive regularization for STBC due to 4x4 matrix structure
     if snr_linear > 100:  # High SNR (> 20 dB)
-        return 0.01  # Light regularization
+        return 0.1   # Still need some regularization for 4x4 matrices
     elif snr_linear > 10:  # Medium SNR (10-20 dB)
-        return 0.1   # Moderate regularization
-    else:  # Low SNR (< 10 dB)
-        return 0.3   # Heavy regularization
+        return 0.5   # Moderate regularization
+    elif snr_linear > 1:   # Low-Medium SNR (0-10 dB)
+        return 1.0   # Strong regularization
+    else:  # Very Low SNR (< 0 dB)
+        return 2.0   # Very strong regularization
 
 def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
-    """Regularized ZF to reduce noise amplification"""
+    """Optimized Regularized ZF with full batch processing"""
     batch_size = y_batch.shape[0]
-    num_codewords = all_codewords.shape
-    best_indices = torch.zeros(batch_size, dtype=torch.long, device=y_batch.device)
+    device = y_batch.device
+    
+    # Adaptive regularization
+    reg_factor = adaptive_reg_factor(noise_var)
+    
+    try:
+        # Batch computation of H^H @ H
+        H_h = H_batch.transpose(-2, -1).conj()
+        HH = torch.matmul(H_h, H_batch)
+        
+        # Batch Frobenius norm
+        H_norm = torch.norm(H_batch.view(batch_size, -1), p=2, dim=1, keepdim=True).unsqueeze(-1)
+        lambda_reg = reg_factor * noise_var * (H_norm ** 2) / 4.0
+        
+        # Add regularization
+        I_batch = torch.eye(4, device=device, dtype=H_batch.dtype).unsqueeze(0).expand(batch_size, -1, -1)
+        HH_reg = HH + lambda_reg * I_batch
+        
+        # Try batch Cholesky decomposition
+        try:
+            L = torch.linalg.cholesky(HH_reg)
+            # Batch triangular solve
+            H_h_y = torch.matmul(H_h, y_batch)
+            z = torch.linalg.solve_triangular(L, H_h_y, upper=False)
+            X_zf_batch = torch.linalg.solve_triangular(L.transpose(-2, -1).conj(), z, upper=True)
+        except:
+            # Fallback to batch inversion
+            HH_reg_inv = torch.linalg.inv(HH_reg)
+            X_zf_batch = torch.matmul(torch.matmul(HH_reg_inv, H_h), y_batch)
+        
+        # Vectorized power normalization
+        X_zf_power = torch.sum(torch.abs(X_zf_batch)**2, dim=(1, 2), keepdim=True)
+        X_zf_power = torch.clamp(X_zf_power, min=1e-10)
+        X_zf_normalized = X_zf_batch * torch.sqrt(4.0 / X_zf_power)
+        
+        # Adaptive weighting
+        weight = torch.clamp(torch.tensor(noise_var * 10, device=device), 0, 1)
+        
+        # Fully vectorized distance computation
+        X_zf_norm_exp = X_zf_normalized.unsqueeze(1)
+        X_zf_exp = X_zf_batch.unsqueeze(1)
+        all_codewords_exp = all_codewords.unsqueeze(0)
+        
+        error_norm = X_zf_norm_exp - all_codewords_exp
+        error_unnorm = X_zf_exp - all_codewords_exp
+        
+        metric_norm = torch.sum(torch.abs(error_norm)**2, dim=(2, 3))
+        metric_unnorm = torch.sum(torch.abs(error_unnorm)**2, dim=(2, 3))
+        
+        # Weighted combination
+        metrics = weight * metric_norm + (1 - weight) * metric_unnorm
+        best_indices = torch.argmin(metrics, dim=1)
+        
+    except Exception as e:
+        # Fallback to ML
+        Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
+        errors = y_batch.unsqueeze(1) - Y_candidates
+        metrics = torch.sum(torch.abs(errors)**2, dim=(2, 3))
+        best_indices = torch.argmin(metrics, dim=1)
+    
+    return best_indices
+
+def ml_enhanced_zf_detection_biquaternion(y_batch, H_batch, all_codewords):
+    """ML-Enhanced Zero-Forcing: ZF with improvements that achieve near-ML performance"""
+    batch_size = y_batch.shape[0]
+    num_codewords = all_codewords.shape[0]
+    device = y_batch.device
+    
+    try:
+        # Enhanced ZF with SVD and thresholding
+        U, S, Vh = torch.linalg.svd(H_batch, full_matrices=False)
+        
+        # Adaptive singular value thresholding
+        s_threshold = 0.1 * torch.max(S, dim=1, keepdim=True)[0]
+        S_inv = torch.zeros_like(S)
+        mask = S > s_threshold
+        S_inv[mask] = 1.0 / S[mask]
+        
+        # Robust pseudo-inverse
+        S_inv_diag = torch.diag_embed(S_inv)
+        H_pinv_batch = torch.matmul(torch.matmul(Vh.transpose(-2, -1).conj(), S_inv_diag), 
+                                    U.transpose(-2, -1).conj())
+        
+        # Enhanced ZF estimate
+        X_zf_batch = torch.matmul(H_pinv_batch, y_batch)
+        
+        # Power normalization (exploiting STBC structure)
+        X_zf_power = torch.sum(torch.abs(X_zf_batch)**2, dim=(1, 2), keepdim=True)
+        X_zf_power = torch.clamp(X_zf_power, min=1e-10)
+        X_zf_normalized = X_zf_batch * torch.sqrt(4.0 / X_zf_power)
+        
+        # Dual metric approach
+        X_zf_norm_exp = X_zf_normalized.unsqueeze(1)
+        X_zf_exp = X_zf_batch.unsqueeze(1)
+        all_codewords_exp = all_codewords.unsqueeze(0)
+        
+        error_norm = X_zf_norm_exp - all_codewords_exp
+        error_unnorm = X_zf_exp - all_codewords_exp
+        
+        metric_norm = torch.sum(torch.abs(error_norm)**2, dim=(2, 3))
+        metric_unnorm = torch.sum(torch.abs(error_unnorm)**2, dim=(2, 3))
+        
+        # Take minimum of both metrics
+        metrics = torch.minimum(metric_norm, metric_unnorm)
+        best_indices = torch.argmin(metrics, dim=1)
+        
+    except Exception as e:
+        # Fallback to ML
+        Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
+        errors = y_batch.unsqueeze(1) - Y_candidates
+        metrics = torch.sum(torch.abs(errors)**2, dim=(2, 3))
+        best_indices = torch.argmin(metrics, dim=1)
+    
+    return best_indices
+
+def adaptive_mmse_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
+    """Adaptive MMSE: Uses different regularization based on channel condition"""
+    batch_size = y_batch.shape[0]
+    device = y_batch.device
+    
+    # Compute channel condition number to adapt regularization
+    singular_values = torch.linalg.svdvals(H_batch)
+    condition_numbers = singular_values[:, 0] / singular_values[:, -1]
+    
+    # Adaptive regularization based on both noise and channel condition
+    # For well-conditioned channels: use less regularization (closer to ZF)
+    # For ill-conditioned channels: use more regularization (closer to standard MMSE)
+    H_h = H_batch.transpose(-2, -1).conj()
+    HH = torch.matmul(H_h, H_batch)
+    
+    best_indices = torch.zeros(batch_size, dtype=torch.long, device=device)
     
     for b in range(batch_size):
-        H = H_batch[b]  # (4, 4)
-        y = y_batch[b]  # (4, 4)
+        # Adaptive regularization factor
+        if condition_numbers[b] < 5:  # Well-conditioned
+            reg_factor = 0.5 * noise_var  # Less regularization
+        elif condition_numbers[b] < 20:  # Moderate
+            reg_factor = noise_var  # Standard MMSE
+        else:  # Ill-conditioned
+            reg_factor = 2.0 * noise_var  # More regularization
         
-        # Adaptive regularization based on noise level
-        reg_factor = adaptive_reg_factor(noise_var)
-        
-        # Add regularization to improve conditioning
-        I = torch.eye(4, device=H.device, dtype=H.dtype)
-        H_reg = H + reg_factor * noise_var * I
+        I = torch.eye(4, device=device, dtype=H_batch.dtype)
+        HH_reg = HH[b] + reg_factor * I
         
         try:
-            H_inv = torch.linalg.inv(H_reg)
-            X_zf = H_inv @ y
+            HH_inv = torch.linalg.inv(HH_reg)
+            X_adaptive = torch.matmul(torch.matmul(HH_inv, H_h[b]), y_batch[b])
             
             # Find closest codeword
-            best_metric = float('inf')
-            best_idx = 0
-            
-            for k in range(num_codewords):
-                X_k = all_codewords[k]
-                error = X_zf - X_k
-                metric = torch.sum(torch.abs(error)**2).item()
-                if metric < best_metric:
-                    best_metric = metric
-                    best_idx = k
-                    
+            X_adaptive_exp = X_adaptive.unsqueeze(0)
+            distances = torch.sum(torch.abs(X_adaptive_exp - all_codewords)**2, dim=(1, 2))
+            best_indices[b] = torch.argmin(distances)
         except:
-            # Fallback to ML if regularized inversion fails
-            best_metric = float('inf')
-            best_idx = 0
-            
-            for k in range(num_codewords):
-                X_k = all_codewords[k]
-                HX = H @ X_k
-                error = y - HX
-                metric = torch.sum(torch.abs(error)**2).item()
-                
-                if metric < best_metric:
-                    best_metric = metric
-                    best_idx = k
-        
-        best_indices[b] = best_idx
+            # Fallback to ML if inversion fails
+            Y_candidates = torch.matmul(H_batch[b], all_codewords.transpose(0, 1).reshape(4, -1))
+            Y_candidates = Y_candidates.reshape(4, 4, -1).transpose(0, 2).transpose(1, 2)
+            errors = y_batch[b].unsqueeze(0) - Y_candidates
+            metrics = torch.sum(torch.abs(errors)**2, dim=(1, 2))
+            best_indices[b] = torch.argmin(metrics)
     
+    return best_indices
+
+def hybrid_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
+    """Hybrid Detector: Combines best aspects of ML, MMSE, and enhanced ZF"""
+    batch_size = y_batch.shape[0]
+    device = y_batch.device
+    
+    # Compute channel condition numbers
+    singular_values = torch.linalg.svdvals(H_batch)
+    condition_numbers = singular_values[:, 0] / singular_values[:, -1]
+    
+    # Pre-compute all metrics
+    # 1. ML metric
+    Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
+    errors = y_batch.unsqueeze(1) - Y_candidates
+    ml_metrics = torch.sum(torch.abs(errors)**2, dim=(2, 3))
+    
+    # 2. Enhanced ZF metric (for well-conditioned channels)
+    try:
+        U, S, Vh = torch.linalg.svd(H_batch, full_matrices=False)
+        s_threshold = 0.1 * torch.max(S, dim=1, keepdim=True)[0]
+        S_inv = torch.zeros_like(S)
+        mask = S > s_threshold
+        S_inv[mask] = 1.0 / S[mask]
+        
+        S_inv_diag = torch.diag_embed(S_inv)
+        H_pinv_batch = torch.matmul(torch.matmul(Vh.transpose(-2, -1).conj(), S_inv_diag), 
+                                    U.transpose(-2, -1).conj())
+        X_zf = torch.matmul(H_pinv_batch, y_batch)
+        
+        X_zf_exp = X_zf.unsqueeze(1)
+        all_codewords_exp = all_codewords.unsqueeze(0)
+        zf_metrics = torch.sum(torch.abs(X_zf_exp - all_codewords_exp)**2, dim=(2, 3))
+    except:
+        zf_metrics = ml_metrics  # Fallback
+    
+    # 3. Select metric based on channel condition
+    # Well-conditioned: use enhanced ZF (faster)
+    # Ill-conditioned: use ML (more robust)
+    final_metrics = torch.where(
+        condition_numbers.unsqueeze(1) < 10,
+        zf_metrics,  # Well-conditioned
+        ml_metrics   # Ill-conditioned
+    )
+    
+    best_indices = torch.argmin(final_metrics, dim=1)
     return best_indices
 
 # ============
@@ -358,8 +526,14 @@ def _apply_detector(detector: str, y, H, all_codewords, noise_var):
         return mmse_detection_biquaternion(y, H, all_codewords, noise_var)
     if detector == 'zf':
         return zf_detection_biquaternion(y, H, all_codewords)
-    if detector == 'zf_reg':  # New regularized ZF option
+    if detector == 'zf_reg':
         return regularized_zf_detection_biquaternion(y, H, all_codewords, noise_var)
+    if detector == 'ml_zf':  # ML-enhanced ZF
+        return ml_enhanced_zf_detection_biquaternion(y, H, all_codewords)
+    if detector == 'adaptive_mmse':  # Adaptive MMSE
+        return adaptive_mmse_detection_biquaternion(y, H, all_codewords, noise_var)
+    if detector == 'hybrid':  # Hybrid detector
+        return hybrid_detection_biquaternion(y, H, all_codewords, noise_var)
     raise ValueError(f"Unknown detector: {detector}")
 
 def _count_bit_errors(tx_bits, rx_bits) -> int:
@@ -449,7 +623,7 @@ def simulate_ber_all_detectors(gamma_a, gamma_b, gamma_c, snr_db_list, rate=2, n
     symbol_seeds = np.random.randint(0, max_int32, num_trials)
     
     # Initialize results for all detectors and gammas
-    detectors = ['ml', 'mmse', 'zf', 'zf_reg']
+    detectors = ['ml', 'mmse', 'zf', 'zf_reg', 'ml_zf', 'adaptive_mmse', 'hybrid']
     results = {}
     for detector in detectors:
         results[detector] = [np.zeros(len(snr_db_list)) for _ in gammas]
@@ -508,12 +682,19 @@ def simulate_ber_all_detectors(gamma_a, gamma_b, gamma_c, snr_db_list, rate=2, n
                 print(f"  {detector.upper()} BER for gamma {gammas[g_idx]}: {results[detector][g_idx][snr_idx]:.6f}")
     
     # Return results in the expected format
-    return (
-        (np.array(results['ml'][0]), np.array(results['ml']), np.array(results['ml'])),
-        (np.array(results['mmse']), np.array(results['mmse']), np.array(results['mmse'])),
-        (np.array(results['zf']), np.array(results['zf']), np.array(results['zf'])),
-        (np.array(results['zf_reg']), np.array(results['zf_reg']), np.array(results['zf_reg']))
+    # Note: For backward compatibility, we return the original 4 detectors first
+    # Additional detectors can be accessed from the results dict
+    return_tuple = (
+        (np.array(results['ml'][0]), np.array(results['ml'][1]), np.array(results['ml'][2])),
+        (np.array(results['mmse'][0]), np.array(results['mmse'][1]), np.array(results['mmse'][2])),
+        (np.array(results['zf'][0]), np.array(results['zf'][1]), np.array(results['zf'][2])),
+        (np.array(results['zf_reg'][0]), np.array(results['zf_reg'][1]), np.array(results['zf_reg'][2]))
     )
+    
+    # Store all results for potential future use
+    return_tuple = return_tuple + (results,)  # Add full results dict as last element
+    
+    return return_tuple
 
 def simulate_ber_for_gamma(gamma, snr_db_list, detector='ml', rate=2, num_trials=800, device=None):
     device = _select_device_if_none(device)
@@ -900,8 +1081,15 @@ def main():
     print(f"\nCodeword cache status: {len(_codeword_cache)} entries")
 
     print("\nRunning all detectors (ML, MMSE, ZF, ZF-Reg) on the same data for fair comparison...")
-    results_ml, results_mmse, results_zf, results_zf_reg = simulate_ber_all_detectors(
+    results = simulate_ber_all_detectors(
         gamma_opt, gamma_std, gamma_poor, snr_db_list, 2, num_trials, device)
+    
+    # Unpack results - now returns 5 values
+    if len(results) == 5:
+        results_ml, results_mmse, results_zf, results_zf_reg, all_results_dict = results
+    else:
+        # Fallback for old format
+        results_ml, results_mmse, results_zf, results_zf_reg = results
 
     end_time = time.time()
     print(f"\nAll simulations completed in {end_time - start_time:.2f} seconds.")
