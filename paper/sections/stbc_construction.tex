@@ -1,0 +1,54 @@
+\section{Biquaternion STBC Construction Framework}
+To construct our tunable-rate 4×4 STBCs, we utilize the left regular representation of elements from the biquaternion division algebra $\mathcal{B}$. This representation maps algebraic elements to matrices, embedding information symbols in a way that preserves the division property and ensures full diversity. The resulting framework enables systematic optimization of the coding gain parameter $\gamma$, whose benefits we demonstrate vary significantly across detection schemes.
+
+\subsection{Code Construction from Left Regular Representation}
+
+We construct $\mathcal{B}$ as the tensor product of two carefully chosen quaternion algebras. Let $\mathcal{Q}_1 = \left(\frac{-1,-1}{\mathbb{F}}\right)$, which is isomorphic to Hamilton's quaternions over a suitable number field $\mathbb{F}$ (e.g., $\mathbb{F} = \mathbb{Q}(i)$ for QPSK constellations). For the second algebra, we choose $\mathcal{Q}_2 = \left(\frac{\gamma,-1}{\mathbb{F}}\right)$, where $\gamma \in \mathbb{F}$ is the key optimization parameter that governs the coding gain. This choice ensures $\mathcal{B} = \mathcal{Q}_1 \otimes_{\mathbb{F}} \mathcal{Q}_2$ is a division algebra, as the ramification sets of $\mathcal{Q}_1$ and $\mathcal{Q}_2$ are disjoint per Albert's theorem.
+
+Any element $x \in \mathcal{B}$ can be uniquely expressed as $x = q_1 + q_2 \mathbf{J}$, where $q_1, q_2 \in \mathcal{Q}_1$ and $\mathbf{J}$ is a generator of $\mathcal{Q}_2$ satisfying $\mathbf{J}^2 = \gamma$. The algebraic structure requires specific anticommutation relations between elements of $\mathcal{Q}_1$ and $\mathcal{Q}_2$ to maintain the tensor product properties.
+
+The \emph{left regular representation} maps each element $x \in \mathcal{B}$ to a linear transformation representing left-multiplication by $x$ on the vector space $\mathcal{B}$. Since $\mathcal{B}$ is 16-dimensional over $\mathbb{F}$ but 4-dimensional over $\mathcal{Q}_1$, this representation yields a 4×4 matrix over $\mathcal{Q}_1$. To obtain complex matrices suitable for wireless transmission, we compose with the standard irreducible representation $\psi: \mathcal{Q}_1 \to M_2(\mathbb{C})$.
+
+The resulting canonical STBC matrix form is:
+\begin{equation} \label{eq:stbc_matrix_general}
+\mathbf{X}(q_1, q_2) = 
+\begin{pmatrix}
+\psi(q_1) & \gamma \psi(q_2^{\sigma}) \\
+\psi(q_2) & \psi(q_1^{\sigma})
+\end{pmatrix},
+\end{equation}
+where $\sigma$ is the involution on $\mathcal{Q}_1$ induced by the tensor product structure, defined by $\sigma(x_0 + x_1 \mathbf{i} + x_2 \mathbf{j} + x_3 \mathbf{k}) = x_0 - x_1 \mathbf{i} + x_2 \mathbf{j} - x_3 \mathbf{k}$. The representation $\psi(\cdot)$ maps a quaternion $q = z_a + z_b \mathbf{j}$ (with $z_a, z_b \in \mathbb{C}$) to the 2×2 complex matrix:
+\begin{equation}
+\psi(q) = \begin{pmatrix} z_a & z_b \\ -\bar{z_b} & \bar{z_a} \end{pmatrix}.
+\end{equation}
+This representation is faithful and preserves multiplication: $\psi(q_1 q_2) = \psi(q_1) \psi(q_2)$.
+
+The parameter $\gamma$ is central to our optimization approach. 
+It appears explicitly in the upper-right block of equation \eqref{eq:stbc_matrix_general}, directly influencing the matrix's singular value distribution and the minimum determinant of codeword difference matrices.
+
+\subsection{Tunable Rate via Symbol Mapping}
+
+The framework's versatility stems from the flexible mapping of $K$ complex information symbols $s_1, \ldots, s_K$ (drawn from constellations such as QPSK) into the quaternions $q_1, q_2 \in \mathcal{Q}_1$. Since each quaternion requires four real coefficients, the total 16 real degrees of freedom in $\mathcal{B}$ precisely match the entries of a 4×4 complex matrix. The transmission rate is $R = K/4$ complex symbols per channel use, enabling adaptive rate selection based on channel conditions and computational constraints.
+
+The symbol-to-quaternion mapping follows the structure:
+\begin{equation}
+q = (s_{2m-1} + s_{2m} \mathbf{i}) + (s_{2m+1} + s_{2m+2} \mathbf{i}) \mathbf{j},
+\end{equation}
+grouping symbols into complex pairs that align with the quaternion basis elements. This yields two primary operating modes:
+
+\begin{itemize}
+    \item \textbf{Rate-1 Robust Design ($K=4$)}: Four symbols map exclusively to $q_1$, with $q_2 = 0$:
+    \begin{equation}
+    q_1 = (s_1 + s_2 \mathbf{i}) + (s_3 + s_4 \mathbf{i}) \mathbf{j}, \quad q_2 = 0.
+    \end{equation}
+    The resulting codeword matrix $\mathbf{X}$ becomes block-diagonal, decomposing detection into two independent 2×2 Alamouti-like subproblems. This significantly reduces computational complexity and enhances error performance in low-SNR environments, making it ideal for robust communication scenarios.
+
+    \item \textbf{Rate-2 High-Throughput Design ($K=8$)}: All eight symbols utilize both quaternions for maximum spectral efficiency:
+    \begin{align}
+        q_1 &= (s_1 + s_2 \mathbf{i}) + (s_3 + s_4 \mathbf{i}) \mathbf{j}, \\
+        q_2 &= (s_5 + s_6 \mathbf{i}) + (s_7 + s_8 \mathbf{i}) \mathbf{j}.
+    \end{align}
+    This embeds all 16 real degrees of freedom (8 complex symbols) into the 4×4 matrix, achieving the maximum transmission rate $R=2$. While detection complexity increases due to the full matrix structure, this configuration maximizes throughput in high-SNR scenarios where reliable detection is feasible.
+\end{itemize}
+
+Intermediate rates such as $R=1.5$ ($K=6$) can be achieved by partially populating $q_2$, providing fine-grained rate adaptation. The systematic nature of this mapping ensures that codewords form a well-structured lattice, whose minimum distance properties are directly enhanced by our $\gamma$ optimization procedure.

@@ -1,0 +1,22 @@
+\section{Introduction}
+The evolution of wireless standards towards higher spectral efficiency has made Multiple-Input Multiple-Output (MIMO) systems a central technology. 
+For systems with four transmit antennas, designing Space-Time Block Codes (STBCs) that offer both high data rates and full transmit diversity remains an important area of research. 
+While early orthogonal designs are rate-limited \cite{1}, non-orthogonal codes built from division algebras can achieve the optimal diversity-multiplexing tradeoff \cite{2,3}.
+
+The theoretical strength of algebraic STBCs lies in the non-vanishing determinant (NVD) property, which guarantees full diversity \cite{4}. However, the practical error performance depends heavily on the coding gain, quantified by the minimum determinant of the difference between codeword matrices. 
+Many algebraic constructions, particularly in 4x4 systems, include free parameters that directly affect this metric. 
+Naive parameter selection often leads to suboptimal coding gain and thus leaves performance gains unrealized.
+
+This paper addresses the critical step of optimizing the coding gain through systematic selection of a key algebraic parameter, \(\gamma\), which controls the interaction between the composing quaternion algebras.
+
+Importantly, our investigation reveals that the practical impact of such optimization is strongly influenced by the receiver's detection algorithm. 
+While algebraic theory ensures a higher minimum determinant with optimized parameters, simulation results show that the bit error rate (BER) improvement depends on the detection scheme employed.
+
+Specifically, our main contributions are:
+\begin{enumerate}
+    \item A flexible framework for constructing tunable-rate 4x4 STBCs from biquaternion algebras.
+    \item A systematic method to optimize the coding gain by choosing the optimal \(\gamma\).
+    \item Comprehensive simulation results demonstrating that optimization yields modest BER gains under maximum likelihood (ML) detection (approximately $0.2 dB$), but more substantial gains under practical linear detection schemes, such as minimum mean square error (MMSE) and zero forcing (ZF), reaching up to $1.0 dB$ and $2.0 dB$ improvements respectively at a BER of \(10^{-5}\).
+\end{enumerate}
+
+These findings bridge the gap between the theoretical promise of algebraic coding and practical system performance, highlighting the importance of considering detection complexity when assessing the benefits of coding gain optimization.

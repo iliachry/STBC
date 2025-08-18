@@ -1,0 +1,44 @@
+\section{Algebraic Preliminaries}
+To construct our tunable-rate STBCs, we leverage the structure of quaternion and biquaternion algebras, which are types of central simple algebras over number fields. 
+These algebras provide a rich framework for embedding information symbols into matrices that ensure desirable properties like full diversity and high rates in MIMO systems. 
+Below, we detail the key concepts underlying our construction.
+
+\subsection{Quaternion Algebras}
+
+A generalized quaternion algebra $\left(\frac{a, b}{\mathbb{F}}\right)$ over a field $\mathbb{F}$ (typically a number field with characteristic not equal to 2) is a four-dimensional central simple algebra over $\mathbb{F}$. It is "central" because its center is exactly $\mathbb{F}$, and "simple" because it has no non-trivial two-sided ideals. The algebra has a basis $\{1, \mathbf{i}, \mathbf{j}, \mathbf{k}\}$ with multiplication rules defined by:
+\begin{equation}
+\mathbf{i}^2 = a, \quad \mathbf{j}^2 = b, \quad \mathbf{ij} = -\mathbf{ji} = \mathbf{k},
+\end{equation}
+where $a, b \in \mathbb{F}^\times$ (the non-zero elements of $\mathbb{F}$). An arbitrary element $q \in \left(\frac{a, b}{\mathbb{F}}\right)$ can be expressed as $q = x_0 + x_1 \mathbf{i} + x_2 \mathbf{j} + x_3 \mathbf{k}$, with $x_0, x_1, x_2, x_3 \in \mathbb{F}$.
+
+A well-known example is Hamilton's quaternion algebra $\mathbb{H} = \left(\frac{-1, -1}{\mathbb{R}}\right)$, where $\mathbf{i}^2 = \mathbf{j}^2 = -1$ and $\mathbf{k}^2 = -1$. Quaternion algebras are either division algebras (every non-zero element has a multiplicative inverse) or isomorphic to the matrix algebra $M_2(\mathbb{F})$. The division property is determined by the Hilbert symbol, which evaluates whether the quadratic form $a x^2 + b y^2 - z^2 = 0$ has non-trivial solutions in $\mathbb{F}$.
+
+In the context of STBC design, quaternion algebras are useful because they can be represented as $2 \times 2$ matrices over $\mathbb{F}$, allowing information symbols to be mapped to matrix entries. This representation preserves the algebraic structure, enabling codes that achieve high rates while maintaining good distance properties \cite{3}.
+
+\subsection{Biquaternion Division Algebras}
+
+A biquaternion algebra $\mathcal{B}$ extends the quaternion concept by taking the tensor product of two quaternion algebras over $\mathbb{F}$:
+\begin{equation}
+\mathcal{B} = \mathcal{Q}_1 \otimes_{\mathbb{F}} \mathcal{Q}_2 = \left(\frac{a, b}{\mathbb{F}}\right) \otimes_{\mathbb{F}} \left(\frac{c, d}{\mathbb{F}}\right).
+\end{equation}
+This results in a 16-dimensional algebra over $\mathbb{F}$, as the tensor product combines the 4-dimensional bases of $\mathcal{Q}_1$ and $\mathcal{Q}_2$ to form 16 basis elements. For our construction, we specifically choose $\mathcal{Q}_1 = \left(\frac{-1, -1}{\mathbb{F}}\right)$ and $\mathcal{Q}_2 = \left(\frac{\gamma, -1}{\mathbb{F}}\right)$, where $\gamma$ is the key optimization parameter that governs the coding gain.
+
+\textbf{Albert's theorem} on tensor products of quaternion algebras provides the theoretical foundation for our approach. It states that $\mathcal{B} = \mathcal{Q}_1 \otimes_{\mathbb{F}} \mathcal{Q}_2$ is a division algebra if and only if there is no common quadratic subfield between $\mathcal{Q}_1$ and $\mathcal{Q}_2$ \cite{3}. This condition can be verified using ramification conditions at the places of $\mathbb{F}$. In our specific construction with $\mathcal{Q}_1 = \left(\frac{-1, -1}{\mathbb{F}}\right)$ and $\mathcal{Q}_2 = \left(\frac{\gamma, -1}{\mathbb{F}}\right)$, the division property holds for appropriate choices of $\gamma$, ensuring the algebras ramify at different primes.
+
+For STBC design, the division property is crucial because it ensures the non-vanishing determinant (NVD) property: the determinant of any non-zero codeword matrix is non-zero and bounded away from zero as the constellation size increases. This guarantees full transmit diversity of order $N_t = 4$, making the code robust to fading channels. Moreover, the 16-dimensional structure of $\mathcal{B}$ provides exactly the degrees of freedom needed for a $4 \times 4$ matrix codeword, enabling tunable-rate designs that can transmit either 4 symbols (rate $R=1$) or 8 symbols (rate $R=2$) over 4 time slots.
+
+\subsection{Left Regular Representation and Matrix Embedding}
+
+The connection between the abstract biquaternion algebra and practical STBC matrices is established through the \emph{left regular representation}. 
+For an element $x \in \mathcal{B}$, which can be uniquely written as $x = q_1 + q_2 \mathbf{J}$ where $q_1, q_2 \in \mathcal{Q}_1$, the left regular representation yields a $4 \times 4$ complex matrix of the canonical form:
+\begin{equation}
+\mathbf{X}(q_1, q_2) = 
+\begin{pmatrix}
+\psi(q_1) & \gamma \psi(q_2^{\sigma}) \\
+\psi(q_2) & \psi(q_1^{\sigma})
+\end{pmatrix},
+\end{equation}
+where $\sigma$ is an involution on $\mathcal{Q}_1$ and $\psi(\cdot)$ maps quaternions to $2 \times 2$ complex matrices.
+
+The parameter $\gamma$ appears explicitly in the upper-right block and directly affects the singular values of $\mathbf{X}$, influencing the code's minimum distance and thus its coding gain.
+This provides the theoretical foundation for the systematic optimization approach developed in this work, where we search for values of $\gamma$ that maximize the minimum determinant and thus improve error performance across different detection schemes.

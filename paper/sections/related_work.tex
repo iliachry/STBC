@@ -1,0 +1,22 @@
+\section{Related Work}
+
+The field of space-time coding has evolved from simple orthogonal structures to complex algebraic designs. 
+The Alamouti code provided an elegant full-rate, full-diversity solution for two antennas with simple linear decoding \cite{5}. 
+However, it was soon proven that complex orthogonal designs for more than two antennas must sacrifice rate, with a maximum achievable rate of 3/4 for four antennas \cite{1}.
+
+To overcome this rate limitation, research turned to non-orthogonal designs. 
+The fundamental limits of the rate-diversity tradeoff were characterized in the seminal work by Zheng and Tse \cite{2}. 
+This motivated the search for codes that could approach these limits. 
+Division algebras over number fields were identified as a powerful tool for constructing STBCs that are full-rate and full-diversity \cite{3}. 
+The most famous example is the \emph{Golden Code}, a 2x2 STBC built from a cyclic division algebra that achieves the optimal diversity-multiplexing tradeoff \cite{6}.
+
+For larger 4x4 MIMO systems, research has explored more complex algebraic structures, including cyclic division algebras and biquaternion algebras \cite{7}. 
+Biquaternion algebras, formed as the tensor product of two quaternion algebras, provide a rich structure for building 4x4 codes. 
+Several works have proposed constructions based on this approach \cite{8,9}. 
+However, as noted in comprehensive surveys on the topic \cite{10}, these constructions often contain degrees of freedom (such as the choice of a parameter like our $\gamma$) whose impact on the coding gain is not explicitly optimized. 
+The focus has largely been on guaranteeing the NVD property and achieving full rate, while the crucial task of maximizing the minimum determinant is often left as an open problem.
+
+Importantly, the practical evaluation of STBC optimization has largely focused on maximum likelihood (ML) detection, which provides optimal performance but requires high computational complexity \cite{11,12}. 
+Recent work has shown that suboptimal linear detection schemes such as minimum mean square error (MMSE) and zero-forcing (ZF) are more practical for real-world implementations \cite{13,14}. 
+However, the impact of detection complexity on the visibility of coding gain optimization has received limited attention in the literature. 
+Our work directly addresses both gaps by providing systematic optimization methods and comprehensive analysis across different detection schemes.

@@ -1,0 +1,62 @@
+\section{Coding Gain Optimization}
+In this section, we delve into the optimization of the coding gain for the proposed STBCs. 
+While the division algebra structure guarantees full diversity, the actual error performance in finite-SNR regimes is largely determined by the coding gain. 
+We first explain the theoretical foundation of coding gain and then present our systematic optimization approach. 
+Importantly, our analysis reveals that optimization benefits are critically dependent on the detection algorithm employed at the receiver.
+
+\subsection{The Coding Gain Criterion}
+The error performance of an STBC is fundamentally tied to the pairwise error probability (PEP), which is the probability that the receiver mistakes one transmitted codeword $\mathbf{X}_1$ for another $\mathbf{X}_2$. 
+Under the assumption of maximum-likelihood (ML) decoding in a Rayleigh fading channel with perfect CSI at the receiver, the PEP for a given channel realization $\mathbf{H}$ is upper-bounded by:
+\begin{equation}
+P(\mathbf{X}_1 \to \mathbf{X}_2 | \mathbf{H}) \leq \exp\left( -\frac{\|\mathbf{H}(\mathbf{X}_1 - \mathbf{X}_2)\|_F^2}{4N_0} \right),
+\end{equation}
+where $\|\cdot\|_F$ denotes the Frobenius norm and $N_0$ is the noise variance. Averaging over the channel statistics, the PEP behaves asymptotically as $\text{PEP} \sim \left( \frac{\rho}{4} \right)^{-N_r N_t} \cdot \zeta^{-N_r}$, where $\rho$ is the SNR and $\zeta$ is the coding gain.
+
+The coding gain $\zeta$ is defined as:
+\begin{equation}
+\zeta = \min_{\Delta\mathbf{X} \neq \mathbf{0}} |\det(\Delta\mathbf{X})|^{2/N_t},
+\end{equation}
+where $\Delta\mathbf{X} = \mathbf{X}_1 - \mathbf{X}_2$ is the difference matrix between any two distinct codewords, and the minimum is taken over all possible non-zero differences. A larger $\zeta$ shifts the BER curve leftward, improving performance at all SNRs. The non-vanishing determinant (NVD) property, ensured by the division algebra structure, guarantees that $\zeta > 0$ and does not diminish as the constellation size increases. However, the NVD only provides a lower bound; our objective is to maximize $\zeta$ to achieve the best possible error rates.
+
+Crucially, the practical impact of coding gain optimization depends significantly on the receiver's detection complexity. 
+While theoretical analysis typically assumes optimal ML detection, real-world systems often employ suboptimal linear detection schemes such as minimum mean square error (MMSE) or zero-forcing (ZF) for computational efficiency.
+Our investigation reveals that these suboptimal detectors amplify the visibility of coding gain differences, making parameter optimization increasingly valuable as detection complexity decreases.
+
+\subsection{The Optimization Problem}
+From the codeword matrix in \eqref{eq:stbc_matrix_general}, the determinant of a difference matrix $\Delta\mathbf{X}$ depends on the quaternion differences $\Delta q_1$, $\Delta q_2$, and the parameter $\gamma$. The structure of the biquaternion matrix ensures that $\gamma$ directly influences the minimum determinant through its appearance in the upper-right block, affecting the overall geometric properties of the code.
+
+The optimization problem seeks the value of $\gamma$ that maximizes the minimum squared determinant:
+\begin{equation} \label{eq:optimization}
+\gamma_{opt} = \arg \max_{\gamma \in \mathbb{F}} \left( \min_{\substack{\Delta q_1, \Delta q_2 \in \mathcal{Q}_1 \\ (\Delta q_1, \Delta q_2) \neq (0,0)}} |\det(\mathbf{X}(\Delta q_1, \Delta q_2))|^2 \right).
+\end{equation}
+
+An analytical solution is intractable due to: 
+(i) the discrete nature of symbol constellations (e.g., QPSK points are finite and non-uniformly distributed), and 
+(ii) the high-dimensional search space over possible error events $\Delta s$, which determine $\Delta q_1$ and $\Delta q_2$ through the symbol mapping.
+
+\subsection{Practical Optimization Approach}
+To solve this optimization problem, we employ a systematic numerical approach that balances computational feasibility with thorough exploration of the parameter space.
+
+\textbf{Grid-Based Search Strategy:} For a given constellation over number field $\mathbb{F} = \mathbb{Q}(i)$, we discretize the search space for $\gamma$ over a structured grid of candidate values. 
+Rather than exhaustive search, we focus on regions around theoretically motivated values, such as those derived from golden ratio principles that have proven effective in related algebraic constructions.
+
+\textbf{Error Event Enumeration:} For each candidate $\gamma$:
+\begin{enumerate}
+    \item Generate representative symbol error vectors $\Delta s$ based on typical constellation differences. 
+    For QPSK rate-2 designs, this involves systematic sampling of the most likely error patterns rather than exhaustive enumeration.
+    
+    \item Map each $\Delta s$ to the corresponding quaternion differences $\Delta q_1, \Delta q_2$ using the established symbol mapping equations.
+    
+    \item Construct the difference matrix $\mathbf{X}(\Delta q_1, \Delta q_2)$ and compute $|\det(\mathbf{X})|^2$.
+    
+    \item Record the minimum value across all tested error events.
+\end{enumerate}
+
+\textbf{Selection Criterion:} The $\gamma$ value yielding the largest minimum determinant is selected as $\gamma_{opt}$. 
+This optimization is performed offline during code design, making computational complexity less critical than accuracy.
+
+\textbf{Practical Considerations:} Our optimization approach recognizes that different detection schemes reveal optimization benefits to varying degrees. 
+While the same $\gamma_{opt}$ theoretically maximizes coding gain regardless of detector, the practical BER improvements scale with detection suboptimality. 
+This suggests that optimization is most valuable for systems employing linear detection schemes, where computational constraints prevent optimal ML decoding.
+
+The systematic nature of this approach ensures that the selected $\gamma$ provides meaningful coding gain improvements across various operating conditions, with benefits becoming increasingly pronounced as receiver complexity decreases from optimal ML to practical linear detection algorithms.

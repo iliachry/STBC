@@ -1,0 +1,30 @@
+\section{System Model}
+
+We consider a point-to-point multiple-input multiple-output (MIMO) communication system with $N_t = 4$ transmit antennas and $N_r$ receive antennas, operating over a quasi-static flat-fading channel. 
+The channel coefficients $h_{j,i}$ connecting the $i$-th transmit antenna to the $j$-th receive antenna are modeled as independent and identically distributed (i.i.d.) complex Gaussian random variables with zero mean and unit variance, representing Rayleigh fading.
+
+The information symbols are drawn from a complex constellation (e.g., QPSK) and encoded into space-time block code (STBC) matrices $\mathbf{X} \in \mathbb{C}^{N_t \times T}$ of dimension $4 \times 4$, where $T = 4$ time slots correspond to one transmission block. 
+Each entry $x_{i,t}$ represents the complex symbol transmitted from antenna $i$ at time slot $t$.
+
+The received signal at antenna $j$ during time slot $t$ is given by:
+\begin{equation}
+y_{j,t} = \sum_{i=1}^{N_t} h_{j,i} x_{i,t} + n_{j,t}
+\end{equation}
+where $n_{j,t}$ is additive white Gaussian noise (AWGN) with zero mean and variance $N_0/2$ per real and imaginary component.
+
+The complete transmission over $T$ time slots can be expressed in matrix form as:
+\begin{equation} \label{eq:system_model_matrix}
+\mathbf{Y} = \mathbf{H}\mathbf{X} + \mathbf{N}
+\end{equation}
+where $\mathbf{Y} \in \mathbb{C}^{N_r \times T}$ is the received signal matrix, $\mathbf{H} \in \mathbb{C}^{N_r \times N_t}$ is the channel matrix, and $\mathbf{N} \in \mathbb{C}^{N_r \times T}$ is the noise matrix with i.i.d. complex Gaussian entries.
+
+We assume perfect channel state information (CSI) is available at the receiver, while the transmitter has no CSI. 
+The receiver's objective is to detect the transmitted symbols from $\mathbf{Y}$ using various detection algorithms.
+
+For detection purposes, the system can be reformulated in vectorized form as:
+\begin{equation}
+\mathbf{y} = \mathcal{H}\mathbf{s} + \mathbf{n}
+\end{equation}
+where $\mathbf{y} = \text{vec}(\mathbf{Y})$ is the vectorized received signal, $\mathbf{s}$ contains the transmitted information symbols, $\mathcal{H}$ is the equivalent channel matrix that incorporates both the channel matrix $\mathbf{H}$ and the STBC structure, and $\mathbf{n} = \text{vec}(\mathbf{N})$ is the vectorized noise.
+
+This equivalent representation enables the application of various detection algorithms, including maximum likelihood (ML), minimum mean square error (MMSE), and zero-forcing (ZF) detection, whose performance characteristics with respect to coding gain optimization form a central focus of this work.
