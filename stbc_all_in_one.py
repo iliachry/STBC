@@ -198,37 +198,116 @@ def mmse_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
     return best_indices
 
 def zf_detection_biquaternion(y_batch, H_batch, all_codewords):
-    """Zero-Forcing detection with noise amplification simulation"""
-    # For ZF, we simulate the effect of noise amplification by modifying the metric
-    # ZF tries to eliminate interference but amplifies noise, especially for poorly conditioned channels
+    """Original Zero-Forcing detection: invert channel first, then find closest codeword"""
+    batch_size = y_batch.shape[0]
+    num_codewords = all_codewords.shape
     
-    # Compute H @ X for all codewords: (B, 4, 4) @ (K, 4, 4) -> (B, K, 4, 4)
-    Y_candidates = torch.einsum('bij,kjl->bkil', H_batch, all_codewords)
-    
-    # Compute basic error terms: ||y - HX||²
-    errors = y_batch.unsqueeze(1) - Y_candidates  # (B, K, 4, 4)
-    error_norms = torch.sum(torch.abs(errors)**2, dim=(2, 3))  # (B, K)
-    
-    # ZF characteristic: noise amplification based on channel condition
-    # Compute condition number of each channel matrix
-    batch_size = H_batch.shape[0]
-    condition_penalties = torch.zeros(batch_size, device=H_batch.device)
+    best_indices = torch.zeros(batch_size, dtype=torch.long, device=y_batch.device)
     
     for b in range(batch_size):
+        H = H_batch[b]  # (4, 4)
+        y = y_batch[b]  # (4, 4)
+        
         try:
-            # Compute condition number (ratio of largest to smallest singular value)
-            U, S, Vh = torch.linalg.svd(H_batch[b])
-            condition_num = S[0] / (S[-1] + 1e-8)  # Add small epsilon to avoid division by zero
-            condition_penalties[b] = condition_num
+            # ZF Step 1: Invert the channel using pseudo-inverse
+            # This is the key difference from ML - we first try to "undo" the channel
+            H_pinv = torch.linalg.pinv(H)  # (4, 4)
+            X_zf = H_pinv @ y  # ZF estimate: "undo" channel effect
+            
+            # ZF Step 2: Find closest valid codeword to the ZF estimate
+            # This is where ZF differs from ML - we look in the transmitted signal space
+            best_metric = float('inf')
+            best_idx = 0
+            
+            for k in range(num_codewords):
+                X_k = all_codewords[k]
+                # ZF metric: distance in the transmitted codeword space
+                error = X_zf - X_k
+                metric = torch.sum(torch.abs(error)**2).item()
+                
+                if metric < best_metric:
+                    best_metric = metric
+                    best_idx = k
+                    
         except:
-            condition_penalties[b] = 1.0
+            # Fallback to ML if ZF matrix inversion fails
+            best_metric = float('inf')
+            best_idx = 0
+            
+            for k in range(num_codewords):
+                X_k = all_codewords[k]
+                HX = H @ X_k
+                error = y - HX
+                metric = torch.sum(torch.abs(error)**2).item()
+                
+                if metric < best_metric:
+                    best_metric = metric
+                    best_idx = k
+        
+        best_indices[b] = best_idx
     
-    # ZF metric: ||y - HX||² * condition_number
-    # This simulates how ZF amplifies noise in poorly conditioned channels
-    condition_penalties = condition_penalties.unsqueeze(1)  # (B, 1) for broadcasting
-    metrics = error_norms * (1.0 + torch.log(condition_penalties + 1.0))  # Add log to moderate the effect
+    return best_indices
+
+def adaptive_reg_factor(noise_var):
+    """Adaptive regularization based on noise level"""
+    snr_linear = 1 / noise_var
+    if snr_linear > 100:  # High SNR (> 20 dB)
+        return 0.01  # Light regularization
+    elif snr_linear > 10:  # Medium SNR (10-20 dB)
+        return 0.1   # Moderate regularization
+    else:  # Low SNR (< 10 dB)
+        return 0.3   # Heavy regularization
+
+def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
+    """Regularized ZF to reduce noise amplification"""
+    batch_size = y_batch.shape[0]
+    num_codewords = all_codewords.shape
+    best_indices = torch.zeros(batch_size, dtype=torch.long, device=y_batch.device)
     
-    best_indices = torch.argmin(metrics, dim=1)
+    for b in range(batch_size):
+        H = H_batch[b]  # (4, 4)
+        y = y_batch[b]  # (4, 4)
+        
+        # Adaptive regularization based on noise level
+        reg_factor = adaptive_reg_factor(noise_var)
+        
+        # Add regularization to improve conditioning
+        I = torch.eye(4, device=H.device, dtype=H.dtype)
+        H_reg = H + reg_factor * noise_var * I
+        
+        try:
+            H_inv = torch.linalg.inv(H_reg)
+            X_zf = H_inv @ y
+            
+            # Find closest codeword
+            best_metric = float('inf')
+            best_idx = 0
+            
+            for k in range(num_codewords):
+                X_k = all_codewords[k]
+                error = X_zf - X_k
+                metric = torch.sum(torch.abs(error)**2).item()
+                if metric < best_metric:
+                    best_metric = metric
+                    best_idx = k
+                    
+        except:
+            # Fallback to ML if regularized inversion fails
+            best_metric = float('inf')
+            best_idx = 0
+            
+            for k in range(num_codewords):
+                X_k = all_codewords[k]
+                HX = H @ X_k
+                error = y - HX
+                metric = torch.sum(torch.abs(error)**2).item()
+                
+                if metric < best_metric:
+                    best_metric = metric
+                    best_idx = k
+        
+        best_indices[b] = best_idx
+    
     return best_indices
 
 # ============
@@ -279,6 +358,8 @@ def _apply_detector(detector: str, y, H, all_codewords, noise_var):
         return mmse_detection_biquaternion(y, H, all_codewords, noise_var)
     if detector == 'zf':
         return zf_detection_biquaternion(y, H, all_codewords)
+    if detector == 'zf_reg':  # New regularized ZF option
+        return regularized_zf_detection_biquaternion(y, H, all_codewords, noise_var)
     raise ValueError(f"Unknown detector: {detector}")
 
 def _count_bit_errors(tx_bits, rx_bits) -> int:
@@ -353,7 +434,7 @@ def simulate_ber_three(gamma_a, gamma_b, gamma_c, snr_db_list, detector='ml', ra
     return np.array(ber_a), np.array(ber_b), np.array(ber_c)
 
 def simulate_ber_all_detectors(gamma_a, gamma_b, gamma_c, snr_db_list, rate=2, num_trials=800, device=None):
-    """Run all three detectors (ML, MMSE, ZF) on the same data for fair comparison"""
+    """Run all detectors (ML, MMSE, ZF, ZF_REG) on the same data for fair comparison"""
     device = _select_device_if_none(device)
     qpsk, bit_lookup = _get_qpsk_and_bit_lookup(device)
     
@@ -368,7 +449,7 @@ def simulate_ber_all_detectors(gamma_a, gamma_b, gamma_c, snr_db_list, rate=2, n
     symbol_seeds = np.random.randint(0, max_int32, num_trials)
     
     # Initialize results for all detectors and gammas
-    detectors = ['ml', 'mmse', 'zf']
+    detectors = ['ml', 'mmse', 'zf', 'zf_reg']
     results = {}
     for detector in detectors:
         results[detector] = [np.zeros(len(snr_db_list)) for _ in gammas]
@@ -428,9 +509,10 @@ def simulate_ber_all_detectors(gamma_a, gamma_b, gamma_c, snr_db_list, rate=2, n
     
     # Return results in the expected format
     return (
-        (np.array(results['ml'][0]), np.array(results['ml'][1]), np.array(results['ml'][2])),
-        (np.array(results['mmse'][0]), np.array(results['mmse'][1]), np.array(results['mmse'][2])),
-        (np.array(results['zf'][0]), np.array(results['zf'][1]), np.array(results['zf'][2]))
+        (np.array(results['ml'][0]), np.array(results['ml']), np.array(results['ml'])),
+        (np.array(results['mmse']), np.array(results['mmse']), np.array(results['mmse'])),
+        (np.array(results['zf']), np.array(results['zf']), np.array(results['zf'])),
+        (np.array(results['zf_reg']), np.array(results['zf_reg']), np.array(results['zf_reg']))
     )
 
 def simulate_ber_for_gamma(gamma, snr_db_list, detector='ml', rate=2, num_trials=800, device=None):
@@ -560,13 +642,13 @@ def optimize_gamma(initial_grid_steps=11, refine_rounds=2, refine_factor=0.4, de
         relaxation_count = 0
         
         print(f"Optimization round {round_idx + 1}/{refine_rounds + 1}")
-        print(f"  Search bounds: Re({r_bounds[0]:.2f}, {r_bounds[1]:.2f}), Im({i_bounds[0]:.2f}, {i_bounds[1]:.2f})")
+        print(f"  Search bounds: Re({r_bounds[0]:.2f}, {r_bounds:.2f}), Im({i_bounds:.2f}, {i_bounds:.2f})")
         
         while not candidate_scores and relaxation_count < max_relaxation_attempts:
             # Generate all gamma candidates for this round
             gamma_candidates = []
             for r in np.linspace(r_bounds[0], r_bounds[1], steps):
-                for im in np.linspace(i_bounds[0], i_bounds[1], steps):
+                for im in np.linspace(i_bounds, i_bounds, steps):
                     gamma = complex(float(r), float(im))
                     if _is_valid_gamma(gamma):
                         gamma_candidates.append(gamma)
@@ -603,7 +685,7 @@ def optimize_gamma(initial_grid_steps=11, refine_rounds=2, refine_factor=0.4, de
             break
             
         candidate_scores.sort(key=lambda x: x[0], reverse=True)
-        round_best_score, round_best_gamma = candidate_scores[0]
+        round_best_score, round_best_gamma = candidate_scores
         
         print(f"  Round best: γ = {round_best_gamma:.3f} (score: {round_best_score:.3e})")
         
@@ -612,8 +694,8 @@ def optimize_gamma(initial_grid_steps=11, refine_rounds=2, refine_factor=0.4, de
         
         # Refine bounds around best candidate
         r_center, i_center = best_gamma.real, best_gamma.imag
-        r_span = (r_bounds[1] - r_bounds[0]) * refine_factor
-        i_span = (i_bounds[1] - i_bounds[0]) * refine_factor
+        r_span = (r_bounds[1] - r_bounds) * refine_factor
+        i_span = (i_bounds - i_bounds) * refine_factor
         r_bounds = (r_center - r_span/2, r_center + r_span/2)
         i_bounds = (i_center - i_span/2, i_center + i_span/2)
     
@@ -639,20 +721,61 @@ def plot_detection_results(snr_db_list, ber_opt, ber_std, ber_poor, gamma_opt, g
     plt.savefig(save_filename, format='png', dpi=300, bbox_inches='tight')
     plt.close()
 
-def save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf, filename='performance_table.png'):
+def plot_all_detectors_comparison(snr_db_list, results_ml, results_mmse, results_zf, results_zf_reg, gamma_opt, gamma_std, gamma_poor, save_filename='all_detectors_comparison.png'):
+    """Plot comparison of all detectors"""
+    plt.figure(figsize=(12, 10))
+    
+    # Unpack results
+    ber_opt_ml, ber_std_ml, ber_poor_ml = results_ml
+    ber_opt_mmse, ber_std_mmse, ber_poor_mmse = results_mmse
+    ber_opt_zf, ber_std_zf, ber_poor_zf = results_zf
+    ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg = results_zf_reg
+    
+    # Plot optimized gamma results
+    plt.semilogy(snr_db_list, ber_opt_ml, 'b-o', linewidth=3, markersize=8, label=f'ML Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
+    plt.semilogy(snr_db_list, ber_opt_mmse, 'g-s', linewidth=3, markersize=8, label=f'MMSE Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
+    plt.semilogy(snr_db_list, ber_opt_zf, 'r-^', linewidth=3, markersize=8, label=f'ZF Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
+    plt.semilogy(snr_db_list, ber_opt_zf_reg, 'm-d', linewidth=3, markersize=8, label=f'ZF-Reg Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
+    
+    plt.xlabel('SNR (dB)', fontsize=14, fontweight='bold')
+    plt.ylabel('Bit Error Rate (BER)', fontsize=14, fontweight='bold')
+    plt.title('All Detectors Performance Comparison', fontsize=16, fontweight='bold')
+    plt.grid(True, which="both", alpha=0.3)
+    plt.legend(fontsize=12)
+    plt.ylim(1e-5, 1.0)
+    plt.xlim(0, max(snr_db_list))
+    plt.tight_layout()
+    plt.savefig(save_filename, format='png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf, ber_opt_zf_reg=None, ber_std_zf_reg=None, filename='performance_table.png'):
     headers = ['SNR (dB)', 'ML Opt', 'ML Std', 'ML Gain %', 'MMSE Opt', 'MMSE Std', 'MMSE Gain %', 'ZF Opt', 'ZF Std', 'ZF Gain %']
+    
+    if ber_opt_zf_reg is not None and ber_std_zf_reg is not None:
+        headers.extend(['ZF-Reg Opt', 'ZF-Reg Std', 'ZF-Reg Gain %'])
+    
     rows = []
     for i, snr in enumerate(snr_db_list):
         ml_gain = ((ber_std_ml[i] - ber_opt_ml[i]) / ber_std_ml[i] * 100.0) if ber_std_ml[i] > 0 else 0.0
         mmse_gain = ((ber_std_mmse[i] - ber_opt_mmse[i]) / ber_std_mmse[i] * 100.0) if ber_std_mmse[i] > 0 else 0.0
         zf_gain = ((ber_std_zf[i] - ber_opt_zf[i]) / ber_std_zf[i] * 100.0) if ber_std_zf[i] > 0 else 0.0
-        rows.append([f"{snr}", f"{ber_opt_ml[i]:.3e}", f"{ber_std_ml[i]:.3e}", f"{ml_gain:.1f}", f"{ber_opt_mmse[i]:.3e}", f"{ber_std_mmse[i]:.3e}", f"{mmse_gain:.1f}", f"{ber_opt_zf[i]:.3e}", f"{ber_std_zf[i]:.3e}", f"{zf_gain:.1f}"])
+        
+        row = [f"{snr}", f"{ber_opt_ml[i]:.3e}", f"{ber_std_ml[i]:.3e}", f"{ml_gain:.1f}", 
+               f"{ber_opt_mmse[i]:.3e}", f"{ber_std_mmse[i]:.3e}", f"{mmse_gain:.1f}", 
+               f"{ber_opt_zf[i]:.3e}", f"{ber_std_zf[i]:.3e}", f"{zf_gain:.1f}"]
+        
+        if ber_opt_zf_reg is not None and ber_std_zf_reg is not None:
+            zf_reg_gain = ((ber_std_zf_reg[i] - ber_opt_zf_reg[i]) / ber_std_zf_reg[i] * 100.0) if ber_std_zf_reg[i] > 0 else 0.0
+            row.extend([f"{ber_opt_zf_reg[i]:.3e}", f"{ber_std_zf_reg[i]:.3e}", f"{zf_reg_gain:.1f}"])
+        
+        rows.append(row)
+    
     fig_height = max(2.5, 0.5 + 0.35 * len(rows))
-    fig, ax = plt.subplots(figsize=(12, fig_height))
+    fig, ax = plt.subplots(figsize=(14, fig_height))
     ax.axis('off')
     table = ax.table(cellText=rows, colLabels=headers, loc='center')
     table.auto_set_font_size(False)
-    table.set_fontsize(10)
+    table.set_fontsize(9)
     table.scale(1, 1.2)
     for (row, col), cell in table.get_celld().items():
         if row == 0:
@@ -776,18 +899,32 @@ def main():
 
     print(f"\nCodeword cache status: {len(_codeword_cache)} entries")
 
-    print("\nRunning all detectors (ML, MMSE, ZF) on the same data for fair comparison...")
-    (ber_opt_ml, ber_std_ml, ber_poor_ml), (ber_opt_mmse, ber_std_mmse, ber_poor_mmse), (ber_opt_zf, ber_std_zf, ber_poor_zf) = simulate_ber_all_detectors(gamma_opt, gamma_std, gamma_poor, snr_db_list, 2, num_trials, device)
+    print("\nRunning all detectors (ML, MMSE, ZF, ZF-Reg) on the same data for fair comparison...")
+    results_ml, results_mmse, results_zf, results_zf_reg = simulate_ber_all_detectors(
+        gamma_opt, gamma_std, gamma_poor, snr_db_list, 2, num_trials, device)
 
     end_time = time.time()
     print(f"\nAll simulations completed in {end_time - start_time:.2f} seconds.")
     print(f"Final cache entries: {len(_codeword_cache)}")
 
+    # Unpack results
+    ber_opt_ml, ber_std_ml, ber_poor_ml = results_ml
+    ber_opt_mmse, ber_std_mmse, ber_poor_mmse = results_mmse
+    ber_opt_zf, ber_std_zf, ber_poor_zf = results_zf
+    ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg = results_zf_reg
+
+    # Generate individual detector plots
     plot_detection_results(snr_db_list, ber_opt_ml, ber_std_ml, ber_poor_ml, gamma_opt, gamma_std, gamma_poor, 'ML', 'ml_detection.png')
     plot_detection_results(snr_db_list, ber_opt_mmse, ber_std_mmse, ber_poor_mmse, gamma_opt, gamma_std, gamma_poor, 'MMSE', 'mmse_detection.png')
     plot_detection_results(snr_db_list, ber_opt_zf, ber_std_zf, ber_poor_zf, gamma_opt, gamma_std, gamma_poor, 'ZF', 'zf_detection.png')
+    plot_detection_results(snr_db_list, ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg, gamma_opt, gamma_std, gamma_poor, 'ZF-Regularized', 'zf_reg_detection.png')
 
-    save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf, filename='performance_table.png')
+    # Generate comparison plot
+    plot_all_detectors_comparison(snr_db_list, results_ml, results_mmse, results_zf, results_zf_reg, gamma_opt, gamma_std, gamma_poor)
+
+    # Generate performance table
+    save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, 
+                              ber_opt_zf, ber_std_zf, ber_opt_zf_reg, ber_std_zf_reg, filename='performance_table.png')
 
     # Optional: Clear cache at end to free memory
     # clear_codeword_cache()
