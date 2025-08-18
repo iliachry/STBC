@@ -1,6 +1,8 @@
 import os
 import time
 import argparse
+import datetime
+import csv
 from pathlib import Path
 from itertools import product
 from multiprocessing import Pool, cpu_count
@@ -274,7 +276,7 @@ def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise
     
     # Adaptive regularization
     reg_factor = adaptive_reg_factor(noise_var)
-    
+        
     try:
         # Batch computation of H^H @ H
         H_h = H_batch.transpose(-2, -1).conj()
@@ -886,7 +888,98 @@ def optimize_gamma(initial_grid_steps=11, refine_rounds=2, refine_factor=0.4, de
 # Plotting
 # ==========
 
-def plot_detection_results(snr_db_list, ber_opt, ber_std, ber_poor, gamma_opt, gamma_std, gamma_poor, detector_name, save_filename):
+# =======================
+# Results and Plotting
+# =======================
+
+def create_results_directory():
+    """Create a timestamped results directory"""
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    results_dir = Path("results") / timestamp
+    results_dir.mkdir(parents=True, exist_ok=True)
+    print(f"Created results directory: {results_dir}")
+    return results_dir
+
+def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor):
+    """Save simulation results to CSV files"""
+    # Save BER vs SNR for optimized gamma
+    csv_file = results_dir / "ber_vs_snr_optimized_gamma.csv"
+    
+    # Prepare headers
+    detectors = list(all_results_dict.keys())
+    headers = ["SNR (dB)"] + [f"{det.upper()}" for det in detectors]
+    
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Optimized Gamma", f"{gamma_opt}"])
+        writer.writerow(headers)
+        
+        # Write data for each SNR point
+        for i, snr in enumerate(snr_db_list):
+            row = [snr]
+            for det in detectors:
+                row.append(all_results_dict[det][0][i])  # First gamma (optimized)
+            writer.writerow(row)
+    
+    print(f"Saved BER vs SNR data to {csv_file}")
+    
+    # Save BER vs SNR for standard gamma
+    csv_file = results_dir / "ber_vs_snr_standard_gamma.csv"
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Standard Gamma", f"{gamma_std}"])
+        writer.writerow(headers)
+        
+        # Write data for each SNR point
+        for i, snr in enumerate(snr_db_list):
+            row = [snr]
+            for det in detectors:
+                row.append(all_results_dict[det][1][i])  # Second gamma (standard)
+            writer.writerow(row)
+    
+    print(f"Saved BER vs SNR data to {csv_file}")
+    
+    # Save BER vs SNR for poor gamma
+    csv_file = results_dir / "ber_vs_snr_poor_gamma.csv"
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Poor Gamma", f"{gamma_poor}"])
+        writer.writerow(headers)
+        
+        # Write data for each SNR point
+        for i, snr in enumerate(snr_db_list):
+            row = [snr]
+            for det in detectors:
+                row.append(all_results_dict[det][2][i])  # Third gamma (poor)
+            writer.writerow(row)
+    
+    print(f"Saved BER vs SNR data to {csv_file}")
+    
+    # Save summary CSV with detector performance comparisons
+    csv_file = results_dir / "detector_performance_summary.csv"
+    with open(csv_file, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Detector", "Avg BER", "Ratio to ML", "Best SNR Point", "Best BER"])
+        
+        # Get ML average for reference
+        ml_data = all_results_dict['ml'][0]  # First gamma (optimized)
+        ml_avg = np.mean([val for val in ml_data if val > 0])
+        
+        for det in detectors:
+            det_data = all_results_dict[det][0]  # First gamma (optimized)
+            det_avg = np.mean([val for val in det_data if val > 0])
+            ratio = det_avg / ml_avg if ml_avg > 0 else 1.0
+            
+            # Find best SNR point
+            best_idx = np.argmin(det_data)
+            best_snr = snr_db_list[best_idx]
+            best_ber = det_data[best_idx]
+            
+            writer.writerow([det.upper(), det_avg, ratio, best_snr, best_ber])
+    
+    print(f"Saved detector performance summary to {csv_file}")
+
+def plot_detection_results(snr_db_list, ber_opt, ber_std, ber_poor, gamma_opt, gamma_std, gamma_poor, detector_name, save_filename, results_dir=None):
     plt.figure(figsize=(10, 8))
     plt.semilogy(snr_db_list, ber_opt, 'b-o', linewidth=3, markersize=8, label=f'Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
     plt.semilogy(snr_db_list, ber_std, 'r--s', linewidth=3, markersize=8, label=f'Standard (γ={gamma_std:.2f})', markerfacecolor='white', markeredgewidth=2)
@@ -899,37 +992,124 @@ def plot_detection_results(snr_db_list, ber_opt, ber_std, ber_poor, gamma_opt, g
     plt.ylim(1e-5, 1.0)
     plt.xlim(0, max(snr_db_list))
     plt.tight_layout()
-    plt.savefig(save_filename, format='png', dpi=300, bbox_inches='tight')
+    
+    # Save to results directory if specified
+    if results_dir is not None:
+        output_path = results_dir / save_filename
+    else:
+        output_path = save_filename
+        
+    plt.savefig(output_path, format='png', dpi=300, bbox_inches='tight')
     plt.close()
 
-def plot_all_detectors_comparison(snr_db_list, results_ml, results_mmse, results_zf, results_zf_reg, gamma_opt, gamma_std, gamma_poor, save_filename='all_detectors_comparison.png'):
-    """Plot comparison of all detectors"""
-    plt.figure(figsize=(12, 10))
+def plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, save_filename='all_detectors_comparison.png', results_dir=None):
+    """Plot comparison of all detectors including enhanced versions"""
+    plt.figure(figsize=(14, 10))
     
-    # Unpack results
-    ber_opt_ml, ber_std_ml, ber_poor_ml = results_ml
-    ber_opt_mmse, ber_std_mmse, ber_poor_mmse = results_mmse
-    ber_opt_zf, ber_std_zf, ber_poor_zf = results_zf
-    ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg = results_zf_reg
+    # Define colors and markers for each detector
+    detector_styles = {
+        'ml': {'color': 'b', 'marker': 'o', 'linestyle': '-', 'label': 'ML'},
+        'mmse': {'color': 'g', 'marker': 's', 'linestyle': '-', 'label': 'MMSE'},
+        'zf': {'color': 'r', 'marker': '^', 'linestyle': '-', 'label': 'ZF'},
+        'zf_reg': {'color': 'm', 'marker': 'd', 'linestyle': '-', 'label': 'ZF-Reg'},
+        'ml_zf': {'color': 'c', 'marker': 'v', 'linestyle': '--', 'label': 'ML-Enhanced ZF'},
+        'adaptive_mmse': {'color': 'orange', 'marker': 'p', 'linestyle': '--', 'label': 'Adaptive MMSE'},
+        'hybrid': {'color': 'brown', 'marker': 'h', 'linestyle': '--', 'label': 'Hybrid'}
+    }
     
-    # Plot optimized gamma results
-    plt.semilogy(snr_db_list, ber_opt_ml, 'b-o', linewidth=3, markersize=8, label=f'ML Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
-    plt.semilogy(snr_db_list, ber_opt_mmse, 'g-s', linewidth=3, markersize=8, label=f'MMSE Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
-    plt.semilogy(snr_db_list, ber_opt_zf, 'r-^', linewidth=3, markersize=8, label=f'ZF Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
-    plt.semilogy(snr_db_list, ber_opt_zf_reg, 'm-d', linewidth=3, markersize=8, label=f'ZF-Reg Optimized (γ={gamma_opt:.2f})', markerfacecolor='white', markeredgewidth=2)
+    # Plot results for optimized gamma (first gamma)
+    for detector, style in detector_styles.items():
+        if detector in all_results_dict:
+            ber_values = all_results_dict[detector][0]  # First gamma (optimized)
+            plt.semilogy(snr_db_list, ber_values, 
+                        color=style['color'], 
+                        marker=style['marker'], 
+                        linestyle=style['linestyle'],
+                        linewidth=2.5, 
+                        markersize=8, 
+                        label=f"{style['label']} (γ={gamma_opt:.2f})", 
+                        markerfacecolor='white', 
+                        markeredgewidth=2)
     
     plt.xlabel('SNR (dB)', fontsize=14, fontweight='bold')
     plt.ylabel('Bit Error Rate (BER)', fontsize=14, fontweight='bold')
     plt.title('All Detectors Performance Comparison', fontsize=16, fontweight='bold')
     plt.grid(True, which="both", alpha=0.3)
-    plt.legend(fontsize=12)
+    plt.legend(fontsize=11, ncol=2, loc='upper right')
     plt.ylim(1e-5, 1.0)
     plt.xlim(0, max(snr_db_list))
     plt.tight_layout()
-    plt.savefig(save_filename, format='png', dpi=300, bbox_inches='tight')
+    
+    # Save to results directory if specified
+    if results_dir is not None:
+        output_path = results_dir / save_filename
+    else:
+        output_path = save_filename
+        
+    plt.savefig(output_path, format='png', dpi=300, bbox_inches='tight')
     plt.close()
 
-def save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf, ber_opt_zf_reg=None, ber_std_zf_reg=None, filename='performance_table.png'):
+    # Create a second plot showing detector groups
+    plt.figure(figsize=(14, 10))
+    
+    # Group 1: Standard detectors
+    for detector in ['ml', 'mmse', 'zf', 'zf_reg']:
+        if detector in all_results_dict:
+            style = detector_styles[detector]
+            ber_values = all_results_dict[detector][0]
+            plt.semilogy(snr_db_list, ber_values, 
+                        color=style['color'], 
+                        marker=style['marker'], 
+                        linestyle='-',
+                        linewidth=3, 
+                        markersize=8, 
+                        label=style['label'], 
+                        markerfacecolor='white', 
+                        markeredgewidth=2)
+    
+    # Group 2: Enhanced detectors
+    for detector in ['ml_zf', 'adaptive_mmse', 'hybrid']:
+        if detector in all_results_dict:
+            style = detector_styles[detector]
+            ber_values = all_results_dict[detector][0]
+            plt.semilogy(snr_db_list, ber_values, 
+                        color=style['color'], 
+                        marker=style['marker'], 
+                        linestyle='--',
+                        linewidth=2, 
+                        markersize=7, 
+                        label=style['label'], 
+                        markerfacecolor='white', 
+                        markeredgewidth=1.5,
+                        alpha=0.8)
+    
+    plt.xlabel('SNR (dB)', fontsize=14, fontweight='bold')
+    plt.ylabel('Bit Error Rate (BER)', fontsize=14, fontweight='bold')
+    plt.title('Standard vs Enhanced Detectors', fontsize=16, fontweight='bold')
+    plt.grid(True, which="both", alpha=0.3)
+    
+    # Add text annotations for detector groups
+    plt.text(0.02, 0.98, 'Standard Detectors', transform=plt.gca().transAxes,
+             fontsize=12, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.5))
+    plt.text(0.02, 0.88, 'Enhanced Detectors', transform=plt.gca().transAxes,
+             fontsize=12, verticalalignment='top', bbox=dict(boxstyle='round', facecolor='lightblue', alpha=0.5))
+    
+    plt.legend(fontsize=11, loc='lower left')
+    plt.ylim(1e-5, 1.0)
+    plt.xlim(0, max(snr_db_list))
+    plt.tight_layout()
+    
+    # Save grouped comparison plot
+    grouped_filename = 'detectors_grouped_comparison.png'
+    if results_dir is not None:
+        output_path = results_dir / grouped_filename
+    else:
+        output_path = grouped_filename
+        
+    plt.savefig(output_path, format='png', dpi=300, bbox_inches='tight')
+    plt.close()
+
+def save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, ber_opt_zf, ber_std_zf, ber_opt_zf_reg=None, ber_std_zf_reg=None, all_results_dict=None, gamma_opt=None, filename='performance_table.png', results_dir=None):
     headers = ['SNR (dB)', 'ML Opt', 'ML Std', 'ML Gain %', 'MMSE Opt', 'MMSE Std', 'MMSE Gain %', 'ZF Opt', 'ZF Std', 'ZF Gain %']
     
     if ber_opt_zf_reg is not None and ber_std_zf_reg is not None:
@@ -962,7 +1142,107 @@ def save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse
         if row == 0:
             cell.set_text_props(fontweight='bold')
     plt.tight_layout()
-    fig.savefig(filename, format='png', dpi=300, bbox_inches='tight')
+    
+    # Save to results directory if specified
+    if results_dir is not None:
+        output_path = results_dir / filename
+    else:
+        output_path = filename
+        
+    fig.savefig(output_path, format='png', dpi=300, bbox_inches='tight')
+    plt.close(fig)
+
+def save_all_detectors_table_png(snr_db_list, all_results_dict, gamma_opt, filename='all_detectors_table.png', results_dir=None):
+    """Create comprehensive performance table for all detectors"""
+    # Prepare headers
+    headers = ['SNR (dB)']
+    detector_names = {
+        'ml': 'ML',
+        'mmse': 'MMSE',
+        'zf': 'ZF',
+        'zf_reg': 'ZF-Reg',
+        'ml_zf': 'ML-ZF',
+        'adaptive_mmse': 'Adapt-MMSE',
+        'hybrid': 'Hybrid'
+    }
+    
+    # Add headers for each detector
+    for det_key, det_name in detector_names.items():
+        if det_key in all_results_dict:
+            headers.append(f'{det_name} BER')
+    
+    # Prepare rows
+    rows = []
+    for i, snr in enumerate(snr_db_list):
+        row = [f"{snr}"]
+        
+        # Add BER values for each detector
+        for det_key in detector_names.keys():
+            if det_key in all_results_dict:
+                ber = all_results_dict[det_key][0][i]  # First gamma (optimized)
+                row.append(f"{ber:.3e}")
+        
+        rows.append(row)
+    
+    # Add a summary row with average improvement over ML
+    summary_row = ["Avg vs ML"]
+    ml_avg = np.mean([all_results_dict['ml'][0][i] for i in range(len(snr_db_list)) if all_results_dict['ml'][0][i] > 0])
+    
+    for det_key in detector_names.keys():
+        if det_key in all_results_dict:
+            if det_key == 'ml':
+                summary_row.append("1.00x")
+            else:
+                det_avg = np.mean([all_results_dict[det_key][0][i] for i in range(len(snr_db_list)) if all_results_dict[det_key][0][i] > 0])
+                ratio = det_avg / ml_avg if ml_avg > 0 else 1.0
+                summary_row.append(f"{ratio:.2f}x")
+    
+    rows.append(summary_row)
+    
+    # Create figure
+    fig_height = max(3, 0.5 + 0.35 * len(rows))
+    fig, ax = plt.subplots(figsize=(12, fig_height))
+    ax.axis('off')
+    
+    # Create table
+    table = ax.table(cellText=rows, colLabels=headers, loc='center', cellLoc='center')
+    table.auto_set_font_size(False)
+    table.set_fontsize(9)
+    table.scale(1, 1.5)
+    
+    # Style the table
+    for (row, col), cell in table.get_celld().items():
+        if row == 0:  # Header row
+            cell.set_text_props(fontweight='bold')
+            cell.set_facecolor('#4CAF50')
+            cell.set_text_props(color='white')
+        elif row == len(rows):  # Summary row
+            cell.set_facecolor('#E0E0E0')
+            cell.set_text_props(fontweight='bold')
+        else:
+            # Color code based on performance
+            if col > 0:  # Skip SNR column
+                try:
+                    ber_val = float(rows[row-1][col])
+                    if ber_val < 1e-3:
+                        cell.set_facecolor('#C8E6C9')  # Light green for good
+                    elif ber_val < 1e-1:
+                        cell.set_facecolor('#FFF9C4')  # Light yellow for medium
+                    else:
+                        cell.set_facecolor('#FFCDD2')  # Light red for poor
+                except:
+                    pass
+    
+    plt.title(f'All Detectors Performance (γ={gamma_opt:.2f})', fontsize=14, fontweight='bold', pad=20)
+    plt.tight_layout()
+    
+    # Save to results directory if specified
+    if results_dir is not None:
+        output_path = results_dir / filename
+    else:
+        output_path = filename
+        
+    fig.savefig(output_path, format='png', dpi=300, bbox_inches='tight')
     plt.close(fig)
 
 # =====
@@ -1101,18 +1381,78 @@ def main():
     ber_opt_zf, ber_std_zf, ber_poor_zf = results_zf
     ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg = results_zf_reg
 
-    # Generate individual detector plots
-    plot_detection_results(snr_db_list, ber_opt_ml, ber_std_ml, ber_poor_ml, gamma_opt, gamma_std, gamma_poor, 'ML', 'ml_detection.png')
-    plot_detection_results(snr_db_list, ber_opt_mmse, ber_std_mmse, ber_poor_mmse, gamma_opt, gamma_std, gamma_poor, 'MMSE', 'mmse_detection.png')
-    plot_detection_results(snr_db_list, ber_opt_zf, ber_std_zf, ber_poor_zf, gamma_opt, gamma_std, gamma_poor, 'ZF', 'zf_detection.png')
-    plot_detection_results(snr_db_list, ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg, gamma_opt, gamma_std, gamma_poor, 'ZF-Regularized', 'zf_reg_detection.png')
+    # Create results directory with timestamp
+    results_dir = create_results_directory()
+    
+    # Generate individual detector plots for standard detectors
+    plot_detection_results(snr_db_list, ber_opt_ml, ber_std_ml, ber_poor_ml, gamma_opt, gamma_std, gamma_poor, 'ML', 'ml_detection.png', results_dir)
+    plot_detection_results(snr_db_list, ber_opt_mmse, ber_std_mmse, ber_poor_mmse, gamma_opt, gamma_std, gamma_poor, 'MMSE', 'mmse_detection.png', results_dir)
+    plot_detection_results(snr_db_list, ber_opt_zf, ber_std_zf, ber_poor_zf, gamma_opt, gamma_std, gamma_poor, 'ZF', 'zf_detection.png', results_dir)
+    plot_detection_results(snr_db_list, ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg, gamma_opt, gamma_std, gamma_poor, 'ZF-Regularized', 'zf_reg_detection.png', results_dir)
+    
+    # Generate plots for enhanced detectors if available
+    if len(results) == 5 and all_results_dict:
+        # ML-Enhanced ZF
+        if 'ml_zf' in all_results_dict:
+            ber_opt_ml_zf = np.array(all_results_dict['ml_zf'][0])
+            ber_std_ml_zf = np.array(all_results_dict['ml_zf'][1])
+            ber_poor_ml_zf = np.array(all_results_dict['ml_zf'][2])
+            plot_detection_results(snr_db_list, ber_opt_ml_zf, ber_std_ml_zf, ber_poor_ml_zf, gamma_opt, gamma_std, gamma_poor, 'ML-Enhanced ZF', 'ml_zf_detection.png', results_dir)
+        
+        # Adaptive MMSE
+        if 'adaptive_mmse' in all_results_dict:
+            ber_opt_adaptive = np.array(all_results_dict['adaptive_mmse'][0])
+            ber_std_adaptive = np.array(all_results_dict['adaptive_mmse'][1])
+            ber_poor_adaptive = np.array(all_results_dict['adaptive_mmse'][2])
+            plot_detection_results(snr_db_list, ber_opt_adaptive, ber_std_adaptive, ber_poor_adaptive, gamma_opt, gamma_std, gamma_poor, 'Adaptive MMSE', 'adaptive_mmse_detection.png', results_dir)
+        
+        # Hybrid
+        if 'hybrid' in all_results_dict:
+            ber_opt_hybrid = np.array(all_results_dict['hybrid'][0])
+            ber_std_hybrid = np.array(all_results_dict['hybrid'][1])
+            ber_poor_hybrid = np.array(all_results_dict['hybrid'][2])
+            plot_detection_results(snr_db_list, ber_opt_hybrid, ber_std_hybrid, ber_poor_hybrid, gamma_opt, gamma_std, gamma_poor, 'Hybrid', 'hybrid_detection.png', results_dir)
 
-    # Generate comparison plot
-    plot_all_detectors_comparison(snr_db_list, results_ml, results_mmse, results_zf, results_zf_reg, gamma_opt, gamma_std, gamma_poor)
+    # Generate comparison plot with all detectors
+    if len(results) == 5 and all_results_dict:
+        plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, 'all_detectors_comparison.png', results_dir)
+        
+        # Export results to CSV
+        save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor)
+    else:
+        # Fallback for old format - create dict from individual results
+        all_results_dict = {
+            'ml': [ber_opt_ml, ber_std_ml, ber_poor_ml],
+            'mmse': [ber_opt_mmse, ber_std_mmse, ber_poor_mmse],
+            'zf': [ber_opt_zf, ber_std_zf, ber_poor_zf],
+            'zf_reg': [ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg]
+        }
+        plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, 'all_detectors_comparison.png', results_dir)
+        
+        # Export results to CSV
+        save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor)
 
     # Generate performance table
     save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, 
-                              ber_opt_zf, ber_std_zf, ber_opt_zf_reg, ber_std_zf_reg, filename='performance_table.png')
+                              ber_opt_zf, ber_std_zf, ber_opt_zf_reg, ber_std_zf_reg, 
+                              filename='performance_table.png', results_dir=results_dir)
+    
+    # Generate comprehensive table with all detectors
+    if len(results) == 5 and all_results_dict:
+        save_all_detectors_table_png(snr_db_list, all_results_dict, gamma_opt, 
+                                    filename='all_detectors_table.png', results_dir=results_dir)
+                                    
+    # Save simulation parameters
+    with open(results_dir / "simulation_parameters.txt", 'w') as f:
+        f.write(f"Simulation Parameters:\n")
+        f.write(f"SNR range: {min(snr_db_list)} to {max(snr_db_list)} dB\n")
+        f.write(f"Number of trials: {num_trials}\n")
+        f.write(f"Optimized gamma: {gamma_opt}\n")
+        f.write(f"Standard gamma: {gamma_std}\n")
+        f.write(f"Poor gamma: {gamma_poor}\n")
+        f.write(f"Detectors: {', '.join(all_results_dict.keys())}\n")
+        
+    print(f"\nAll results saved to: {results_dir}")
 
     # Optional: Clear cache at end to free memory
     # clear_codeword_cache()
