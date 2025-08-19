@@ -100,12 +100,12 @@ def simulate_ber(gamma, snr_db_list, detector='ml', rate=2, num_trials=800, devi
             true_bits = all_bits[codeword_indices]
             
             # Generate random channel (Rayleigh fading)
-            H = (torch.randn(current_batch_size, 4, 4, dtype=torch.complex64, device=device) +
-                1j * torch.randn(current_batch_size, 4, 4, dtype=torch.complex64, device=device)) / torch.sqrt(torch.tensor(2.0, device=device))
+            H = (torch.randn(current_batch_size, 4, 4, device=device) +
+                1j * torch.randn(current_batch_size, 4, 4, device=device)) / torch.sqrt(torch.tensor(2.0, device=device))
                 
             # Generate received signal: Y = H @ X + N
             Y = torch.matmul(H, X)
-            N = torch.sqrt(noise_var_tensor/2) * (torch.randn_like(Y) + 1j * torch.randn_like(Y))
+            N = torch.sqrt(noise_var_tensor/2) * (torch.randn_like(Y.real) + 1j * torch.randn_like(Y.real))
             Y_noisy = Y + N
             
             # Apply detector
@@ -207,16 +207,12 @@ def simulate_ber_all_detectors(gammas, snr_db_list, rate=2, num_trials=800, devi
                 true_bits = all_bits[codeword_indices]
                 
                 # Generate random channel (Rayleigh fading)
-                H = (torch.randn(current_batch_size, 4, 4, dtype=torch.complex64, device=device) +
-                     1j * torch.randn(current_batch_size, 4, 4, dtype=torch.complex64, device=device)) / torch.sqrt(torch.tensor(2.0, device=device))
+                H = (torch.randn(current_batch_size, 4, 4, device=device) +
+                     1j * torch.randn(current_batch_size, 4, 4, device=device)) / torch.sqrt(torch.tensor(2.0, device=device))
                      
-                # Generate received signal: Y = H @ X
+                # Generate received signal: Y = H @ X + N
                 Y = torch.matmul(H, X)
-                
-                # Generate noise
-                N = torch.sqrt(noise_var_tensor/2) * (torch.randn_like(Y) + 1j * torch.randn_like(Y))
-                
-                # Add noise to get noisy received signal
+                N = torch.sqrt(noise_var_tensor/2) * (torch.randn_like(Y.real) + 1j * torch.randn_like(Y.real))
                 Y_noisy = Y + N
                 
                 # Store all data for this batch
