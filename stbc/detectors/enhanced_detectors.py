@@ -54,14 +54,14 @@ def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise
         W_reg = torch.matmul(HH_reg_inv, H_h)
         X_zf_reg = torch.matmul(W_reg, y_batch)
         
-        # Fast quantization disabled due to bug - always use exhaustive search
-        # TODO: Fix fast_linear_detection algorithm and re-enable
-        # if stbc is not None:
-        #     try:
-        #         best_indices = fast_linear_detection(X_zf_reg, stbc.gamma, rate)
-        #         return best_indices
-        #     except:
-        #         pass
+        # Fast quantization - newly fixed algorithm
+        if stbc is not None:
+            try:
+                best_indices = fast_linear_detection(X_zf_reg, stbc.gamma, rate)
+                return best_indices
+            except Exception as e:
+                # Fallback to exhaustive search if fast quantization fails
+                print(f"Warning: Fast quantization failed ({e}), using exhaustive search")
         
         # Fallback: exhaustive search
         X_zf_exp = X_zf_reg.unsqueeze(1)

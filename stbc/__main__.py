@@ -162,7 +162,7 @@ def main():
     plot_detection_results(snr_db_list, ber_opt_zf_reg, ber_std_zf_reg, ber_poor_zf_reg, gamma_opt, gamma_std, gamma_poor, 'ZF-Regularized', 'zf_reg_detection.png', results_dir)
     
     # Generate plots for enhanced detectors if available
-    if len(results) == 5 and all_results_dict:
+    if len(results) == 6 and all_results_dict:
         # ML-Enhanced ZF
         if 'ml_zf' in all_results_dict:
             ber_opt_ml_zf = np.array(all_results_dict['ml_zf'][0])
@@ -185,7 +185,7 @@ def main():
             plot_detection_results(snr_db_list, ber_opt_hybrid, ber_std_hybrid, ber_poor_hybrid, gamma_opt, gamma_std, gamma_poor, 'Hybrid', 'hybrid_detection.png', results_dir)
 
     # Generate comparison plot with all detectors
-    if len(results) == 5 and all_results_dict:
+    if len(results) == 6 and all_results_dict:
         plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, 'all_detectors_comparison.png', results_dir)
         
         # Export results to CSV (with timing data)
@@ -209,7 +209,7 @@ def main():
                               filename='performance_table.png', results_dir=results_dir)
     
     # Generate comprehensive table with all detectors
-    if len(results) == 5 and all_results_dict:
+    if len(results) == 6 and all_results_dict:
         save_all_detectors_table_png(snr_db_list, all_results_dict, gamma_opt, 
                                     filename='all_detectors_table.png', results_dir=results_dir)
                                     
