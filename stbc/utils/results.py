@@ -20,7 +20,7 @@ def create_results_directory():
     print(f"Created results directory: {results_dir}")
     return results_dir
 
-def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor):
+def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, timing_results=None):
     """
     Save simulation results to CSV files.
     
@@ -31,13 +31,16 @@ def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, g
         gamma_opt: Optimized gamma value
         gamma_std: Standard gamma value
         gamma_poor: Poor gamma value
+        timing_results: Dictionary of timing results (optional)
     """
     # Save BER vs SNR for optimized gamma
     csv_file = results_dir / "ber_vs_snr_optimized_gamma.csv"
     
     # Prepare headers
     detectors = list(all_results_dict.keys())
-    headers = ["SNR (dB)"] + [f"{det.upper()}" for det in detectors]
+    headers = ["SNR (dB)"] + [f"{det.upper()}_BER" for det in detectors]
+    if timing_results:
+        headers += [f"{det.upper()}_TIME(s)" for det in detectors]
     
     with open(csv_file, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -47,8 +50,13 @@ def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, g
         # Write data for each SNR point
         for i, snr in enumerate(snr_db_list):
             row = [snr]
+            # Add BER values
             for det in detectors:
                 row.append(all_results_dict[det][0][i])  # First gamma (optimized)
+            # Add timing values if available
+            if timing_results:
+                for det in detectors:
+                    row.append(timing_results[det][0][i])  # First gamma (optimized)
             writer.writerow(row)
     
     print(f"Saved BER vs SNR data to {csv_file}")
@@ -63,8 +71,13 @@ def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, g
         # Write data for each SNR point
         for i, snr in enumerate(snr_db_list):
             row = [snr]
+            # Add BER values
             for det in detectors:
                 row.append(all_results_dict[det][1][i])  # Second gamma (standard)
+            # Add timing values if available
+            if timing_results:
+                for det in detectors:
+                    row.append(timing_results[det][1][i])  # Second gamma (standard)
             writer.writerow(row)
     
     print(f"Saved BER vs SNR data to {csv_file}")
@@ -79,8 +92,13 @@ def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, g
         # Write data for each SNR point
         for i, snr in enumerate(snr_db_list):
             row = [snr]
+            # Add BER values
             for det in detectors:
                 row.append(all_results_dict[det][2][i])  # Third gamma (poor)
+            # Add timing values if available
+            if timing_results:
+                for det in detectors:
+                    row.append(timing_results[det][2][i])  # Third gamma (poor)
             writer.writerow(row)
     
     print(f"Saved BER vs SNR data to {csv_file}")
@@ -89,7 +107,10 @@ def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, g
     csv_file = results_dir / "detector_performance_summary.csv"
     with open(csv_file, 'w', newline='') as f:
         writer = csv.writer(f)
-        writer.writerow(["Detector", "Avg BER", "Ratio to ML", "Best SNR Point", "Best BER"])
+        headers = ["Detector", "Avg BER", "Ratio to ML", "Best SNR Point", "Best BER"]
+        if timing_results:
+            headers += ["Avg Time(s)", "Total Time(s)"]
+        writer.writerow(headers)
         
         # Get ML average for reference
         ml_data = all_results_dict['ml'][0]  # First gamma (optimized)
@@ -106,6 +127,15 @@ def save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, g
             best_snr = snr_db_list[best_idx]
             best_ber = det_data[best_idx]
             
-            writer.writerow([det.upper(), det_avg, ratio, best_snr, best_ber])
+            row = [det.upper(), det_avg, ratio, best_snr, best_ber]
+            
+            # Add timing information if available
+            if timing_results:
+                timing_data = timing_results[det][0]  # First gamma (optimized)
+                avg_time = np.mean(timing_data)
+                total_time = np.sum(timing_data)
+                row += [avg_time, total_time]
+            
+            writer.writerow(row)
     
     print(f"Saved detector performance summary to {csv_file}")

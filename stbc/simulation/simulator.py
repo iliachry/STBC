@@ -21,7 +21,7 @@ from ..detectors.enhanced_detectors import (
     hybrid_detection_biquaternion
 )
 
-def apply_detector(detector: str, y, H, all_codewords, noise_var):
+def apply_detector(detector: str, y, H, all_codewords, noise_var, stbc=None, rate=2):
     """
     Apply the specified detector to the received signal.
     
@@ -31,6 +31,8 @@ def apply_detector(detector: str, y, H, all_codewords, noise_var):
         H: Channel matrix
         all_codewords: All possible codewords
         noise_var: Noise variance
+        stbc: STBC object (for fast quantization)
+        rate: Code rate
         
     Returns:
         torch.Tensor: Indices of the detected codewords
@@ -38,11 +40,11 @@ def apply_detector(detector: str, y, H, all_codewords, noise_var):
     if detector == 'ml':
         return ml_detection_biquaternion(y, H, all_codewords)
     if detector == 'mmse':
-        return mmse_detection_biquaternion(y, H, all_codewords, noise_var)
+        return mmse_detection_biquaternion(y, H, all_codewords, noise_var, stbc, rate)
     if detector == 'zf':
-        return zf_detection_biquaternion(y, H, all_codewords)
+        return zf_detection_biquaternion(y, H, all_codewords, stbc, rate)
     if detector == 'zf_reg':
-        return regularized_zf_detection_biquaternion(y, H, all_codewords, noise_var)
+        return regularized_zf_detection_biquaternion(y, H, all_codewords, noise_var, stbc, rate)
     if detector == 'ml_zf':  # ML-enhanced ZF
         return ml_enhanced_zf_detection_biquaternion(y, H, all_codewords)
     if detector == 'adaptive_mmse':  # Adaptive MMSE
@@ -109,7 +111,7 @@ def simulate_ber(gamma, snr_db_list, detector='ml', rate=2, num_trials=800, devi
             Y_noisy = Y + N
             
             # Apply detector
-            detected_indices = apply_detector(detector, Y_noisy, H, all_codewords, noise_var_tensor)
+            detected_indices = apply_detector(detector, Y_noisy, H, all_codewords, noise_var_tensor, stbc, rate)
             detected_bits = all_bits[detected_indices]
             
             # Count bit errors
@@ -158,13 +160,14 @@ def simulate_ber_all_detectors(gammas, snr_db_list, rate=2, num_trials=800, devi
         detectors: List of detectors to evaluate (if None, use all)
         
     Returns:
-        tuple: Results for each gamma value and detector
+        tuple: Results for each gamma value and detector (includes timing data)
     """
     device = select_device(device)
     if detectors is None:
         detectors = ['ml', 'mmse', 'zf', 'zf_reg', 'ml_zf', 'adaptive_mmse', 'hybrid']
     
     results = {det: [[], [], []] for det in detectors}
+    timing_results = {det: [[], [], []] for det in detectors}
     
     for i, gamma in enumerate(gammas):
         print(f"\nSimulating gamma = {gamma}")
@@ -227,7 +230,7 @@ def simulate_ber_all_detectors(gammas, snr_db_list, rate=2, num_trials=800, devi
                 # Process each batch
                 for X, H, Y_noisy, true_bits in all_batches_data:
                     # Apply detector (using the same noisy received signal)
-                    detected_indices = apply_detector(det, Y_noisy, H, all_codewords, noise_var_tensor)
+                    detected_indices = apply_detector(det, Y_noisy, H, all_codewords, noise_var_tensor, stbc, rate)
                     detected_bits = all_bits[detected_indices]
                     
                     # Count bit errors
@@ -235,21 +238,25 @@ def simulate_ber_all_detectors(gammas, snr_db_list, rate=2, num_trials=800, devi
                     bit_errors += errors
                     total_bits += true_bits.numel()
                 
-                # Calculate BER
+                # Calculate BER and timing
                 ber = bit_errors / total_bits if total_bits > 0 else 1.0
-                print(f"  {det.upper()}: BER = {ber:.6f}, time: {time.time() - start_time:.2f}s")
+                elapsed_time = time.time() - start_time
+                print(f"  {det.upper()}: BER = {ber:.6f}, time: {elapsed_time:.2f}s")
                 
                 # Store result at the correct position
                 if len(results[det][i]) <= snr_idx:
                     results[det][i].append(ber)
+                    timing_results[det][i].append(elapsed_time)
                 else:
                     results[det][i][snr_idx] = ber
+                    timing_results[det][i][snr_idx] = elapsed_time
             
-    # Return all results and dictionary for easy access
+    # Return all results and dictionary for easy access (including timing)
     return (
         (np.array(results['ml'][0]), np.array(results['ml'][1]), np.array(results['ml'][2])),
         (np.array(results['mmse'][0]), np.array(results['mmse'][1]), np.array(results['mmse'][2])),
         (np.array(results['zf'][0]), np.array(results['zf'][1]), np.array(results['zf'][2])),
         (np.array(results['zf_reg'][0]), np.array(results['zf_reg'][1]), np.array(results['zf_reg'][2])),
-        results
+        results,
+        timing_results
     )

@@ -3,6 +3,7 @@ Enhanced detection algorithms for STBC.
 """
 
 import torch
+from .fast_quantization import fast_linear_detection
 
 def adaptive_reg_factor(noise_var):
     """Fixed regularization - should be proportional to noise variance"""
@@ -28,8 +29,8 @@ def adaptive_reg_factor(noise_var):
     else:  # Very Low SNR (< 0 dB)
         return 5.0    # Large factor for very low SNR
         
-def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var):
-    """Regularized ZF - should be worse than ML but better than basic ZF"""
+def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var, stbc=None, rate=2):
+    """Regularized ZF with fast quantization"""
     batch_size = y_batch.shape[0]
     device = y_batch.device
     
@@ -39,14 +40,11 @@ def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise
     else:
         noise_var_val = float(noise_var)
     
-    # Use moderate regularization - not too strong to avoid ML-like behavior
-    # Key insight: ZF-Reg must remain a linear detector, not approach ML optimality
+    # Moderate regularization
     H_h = H_batch.transpose(-2, -1).conj()
     HH = torch.matmul(H_h, H_batch)
     
-    # Conservative regularization to avoid over-regularization
-    # This ensures ZF-Reg remains worse than ML
-    reg_value = 0.1 * noise_var_val  # Much smaller regularization
+    reg_value = 1.0 * noise_var_val  # Increase from 0.1 to 1.0 for better performance
     I_batch = torch.eye(4, device=device, dtype=H_batch.dtype).unsqueeze(0).expand(batch_size, -1, -1)
     HH_reg = HH + reg_value * I_batch
     
@@ -56,16 +54,25 @@ def regularized_zf_detection_biquaternion(y_batch, H_batch, all_codewords, noise
         W_reg = torch.matmul(HH_reg_inv, H_h)
         X_zf_reg = torch.matmul(W_reg, y_batch)
         
-        # Find closest codeword - linear detector approach
+        # Fast quantization disabled due to bug - always use exhaustive search
+        # TODO: Fix fast_linear_detection algorithm and re-enable
+        # if stbc is not None:
+        #     try:
+        #         best_indices = fast_linear_detection(X_zf_reg, stbc.gamma, rate)
+        #         return best_indices
+        #     except:
+        #         pass
+        
+        # Fallback: exhaustive search
         X_zf_exp = X_zf_reg.unsqueeze(1)
         all_codewords_exp = all_codewords.unsqueeze(0)
         distances = torch.sum(torch.abs(X_zf_exp - all_codewords_exp)**2, dim=(2, 3))
         best_indices = torch.argmin(distances, dim=1)
         
     except Exception as e:
-        # Fallback to basic ZF (not ML!)
+        # Fallback to basic ZF
         from .basic_detectors import zf_detection_biquaternion
-        best_indices = zf_detection_biquaternion(y_batch, H_batch, all_codewords)
+        best_indices = zf_detection_biquaternion(y_batch, H_batch, all_codewords, stbc, rate)
     
     return best_indices
     

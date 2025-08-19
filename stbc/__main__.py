@@ -64,18 +64,13 @@ def main():
     load_dotenv()
     args = parse_args()
 
-    # Set device
+    # Set device - default to CPU for consistency
     if args.device:
         device = torch.device(args.device)
-    elif torch.cuda.is_available():
-        device = torch.device("cuda")
-        print(f"Using CUDA GPU ({torch.cuda.get_device_name(0)}) for acceleration.")
-    elif torch.backends.mps.is_available():
-        device = torch.device("mps")
-        print("Using M1/M2 GPU (MPS) for acceleration.")
+        print(f"Using specified device: {device}")
     else:
         device = torch.device("cpu")
-        print("No GPU backend available. Running on CPU (will be slower).")
+        print("Using CPU device (default). Use --device cuda/mps for GPU acceleration.")
         
     # Generate SNR range
     snr_db_list = np.arange(args.snr_start, args.snr_end + 1, args.snr_step)
@@ -143,15 +138,15 @@ def main():
     
     # Run simulation for all detectors
     results = simulate_ber_all_detectors(
-        gammas, 
+        gammas,
         snr_db_list,
         rate=args.rate,
         num_trials=num_trials,
         device=device
     )
     
-    # Unpack results
-    results_ml, results_mmse, results_zf, results_zf_reg, all_results_dict = results
+    # Unpack results (now includes timing data)
+    results_ml, results_mmse, results_zf, results_zf_reg, all_results_dict, timing_results = results
     ber_opt_ml, ber_std_ml, ber_poor_ml = results_ml
     ber_opt_mmse, ber_std_mmse, ber_poor_mmse = results_mmse
     ber_opt_zf, ber_std_zf, ber_poor_zf = results_zf
@@ -193,8 +188,8 @@ def main():
     if len(results) == 5 and all_results_dict:
         plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, 'all_detectors_comparison.png', results_dir)
         
-        # Export results to CSV
-        save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor)
+        # Export results to CSV (with timing data)
+        save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, timing_results)
     else:
         # Fallback for old format - create dict from individual results
         all_results_dict = {
@@ -205,8 +200,8 @@ def main():
         }
         plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, 'all_detectors_comparison.png', results_dir)
         
-        # Export results to CSV
-        save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor)
+        # Export results to CSV (with timing data)
+        save_results_to_csv(results_dir, snr_db_list, all_results_dict, gamma_opt, gamma_std, gamma_poor, timing_results)
 
     # Generate performance table
     save_performance_table_png(snr_db_list, ber_opt_ml, ber_std_ml, ber_opt_mmse, ber_std_mmse, 
