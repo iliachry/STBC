@@ -163,12 +163,12 @@ def main():
     
     # Generate plots for enhanced detectors if available
     if len(results) == 6 and all_results_dict:
-        # ML-Enhanced ZF
-        if 'ml_zf' in all_results_dict:
-            ber_opt_ml_zf = np.array(all_results_dict['ml_zf'][0])
-            ber_std_ml_zf = np.array(all_results_dict['ml_zf'][1])
-            ber_poor_ml_zf = np.array(all_results_dict['ml_zf'][2])
-            plot_detection_results(snr_db_list, ber_opt_ml_zf, ber_std_ml_zf, ber_poor_ml_zf, gamma_opt, gamma_std, gamma_poor, 'ML-Enhanced ZF', 'ml_zf_detection.png', results_dir)
+        # Adaptive ZF
+        if 'adaptive_zf' in all_results_dict:
+            ber_opt_adaptive_zf = np.array(all_results_dict['adaptive_zf'][0])
+            ber_std_adaptive_zf = np.array(all_results_dict['adaptive_zf'][1])
+            ber_poor_adaptive_zf = np.array(all_results_dict['adaptive_zf'][2])
+            plot_detection_results(snr_db_list, ber_opt_adaptive_zf, ber_std_adaptive_zf, ber_poor_adaptive_zf, gamma_opt, gamma_std, gamma_poor, 'Adaptive ZF', 'adaptive_zf_detection.png', results_dir)
         
         # Adaptive MMSE
         if 'adaptive_mmse' in all_results_dict:

@@ -9,7 +9,7 @@ from .basic_detectors import (
 from .enhanced_detectors import (
     adaptive_reg_factor,
     regularized_zf_detection_biquaternion,
-    ml_enhanced_zf_detection_biquaternion,
+    adaptive_zf_detection_biquaternion,
     adaptive_mmse_detection_biquaternion,
     hybrid_detection_biquaternion
 )
@@ -20,7 +20,7 @@ __all__ = [
     'zf_detection_biquaternion',
     'adaptive_reg_factor',
     'regularized_zf_detection_biquaternion',
-    'ml_enhanced_zf_detection_biquaternion',
+    'adaptive_zf_detection_biquaternion',
     'adaptive_mmse_detection_biquaternion',
     'hybrid_detection_biquaternion'
 ]

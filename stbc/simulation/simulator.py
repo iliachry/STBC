@@ -16,7 +16,7 @@ from ..detectors.basic_detectors import (
 )
 from ..detectors.enhanced_detectors import (
     regularized_zf_detection_biquaternion,
-    ml_enhanced_zf_detection_biquaternion,
+    adaptive_zf_detection_biquaternion,
     adaptive_mmse_detection_biquaternion,
     hybrid_detection_biquaternion
 )
@@ -45,8 +45,8 @@ def apply_detector(detector: str, y, H, all_codewords, noise_var, stbc=None, rat
         return zf_detection_biquaternion(y, H, all_codewords, stbc, rate)
     if detector == 'zf_reg':
         return regularized_zf_detection_biquaternion(y, H, all_codewords, noise_var, stbc, rate)
-    if detector == 'ml_zf':  # ML-enhanced ZF
-        return ml_enhanced_zf_detection_biquaternion(y, H, all_codewords)
+    if detector == 'adaptive_zf':  # Adaptive ZF
+        return adaptive_zf_detection_biquaternion(y, H, all_codewords)
     if detector == 'adaptive_mmse':  # Adaptive MMSE
         return adaptive_mmse_detection_biquaternion(y, H, all_codewords, noise_var)
     if detector == 'hybrid':  # Hybrid detector
@@ -164,7 +164,7 @@ def simulate_ber_all_detectors(gammas, snr_db_list, rate=2, num_trials=800, devi
     """
     device = select_device(device)
     if detectors is None:
-        detectors = ['ml', 'mmse', 'zf', 'zf_reg', 'ml_zf', 'adaptive_mmse', 'hybrid']
+        detectors = ['ml', 'mmse', 'zf', 'zf_reg', 'adaptive_zf', 'adaptive_mmse', 'hybrid']
     
     results = {det: [[], [], []] for det in detectors}
     timing_results = {det: [[], [], []] for det in detectors}

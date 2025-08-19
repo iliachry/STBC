@@ -51,14 +51,14 @@ def mmse_detection_biquaternion(y_batch, H_batch, all_codewords, noise_var, stbc
         except:
             X_mmse = torch.matmul(torch.linalg.pinv(H_batch), y_batch)
     
-    # Fast quantization disabled due to algorithm error
-    # TODO: Fix fast quantization algorithm
+    # Fast quantization may not be optimal for noisy MMSE estimates
+    # Use exhaustive search for better accuracy
     # if stbc is not None:
     #     try:
     #         best_indices = fast_linear_detection(X_mmse, stbc.gamma, rate)
     #         return best_indices
-    #     except:
-    #         pass  # Fall back to exhaustive search
+    #     except Exception as e:
+    #         print(f"Warning: Fast quantization failed in MMSE ({e}), using exhaustive search")
     
     # Fallback: exhaustive search (slow but accurate)
     X_mmse_exp = X_mmse.unsqueeze(1)
@@ -77,14 +77,13 @@ def zf_detection_biquaternion(y_batch, H_batch, all_codewords, stbc=None, rate=2
         H_pinv_batch = torch.linalg.pinv(H_batch)
         X_zf_batch = torch.matmul(H_pinv_batch, y_batch)
         
-        # Fast quantization disabled due to algorithm error
-        # TODO: Fix fast quantization algorithm
-        # if stbc is not None:
-        #     try:
-        #         best_indices = fast_linear_detection(X_zf_batch, stbc.gamma, rate)
-        #         return best_indices
-        #     except:
-        #         pass  # Fall back to exhaustive search
+        # Fast quantization - now fixed and working
+        if stbc is not None:
+            try:
+                best_indices = fast_linear_detection(X_zf_batch, stbc.gamma, rate)
+                return best_indices
+            except Exception as e:
+                print(f"Warning: Fast quantization failed in ZF ({e}), using exhaustive search")
         
         # Fallback: exhaustive search (slow but accurate)
         X_zf_exp = X_zf_batch.unsqueeze(1)

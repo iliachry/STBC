@@ -66,7 +66,7 @@ def plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamm
         'mmse': {'color': 'g', 'marker': 's', 'linestyle': '-', 'label': 'MMSE'},
         'zf': {'color': 'r', 'marker': '^', 'linestyle': '-', 'label': 'ZF'},
         'zf_reg': {'color': 'm', 'marker': 'd', 'linestyle': '-', 'label': 'ZF-Reg'},
-        'ml_zf': {'color': 'c', 'marker': 'v', 'linestyle': '--', 'label': 'ML-Enhanced ZF'},
+        'adaptive_zf': {'color': 'c', 'marker': 'v', 'linestyle': '--', 'label': 'Adaptive ZF'},
         'adaptive_mmse': {'color': 'orange', 'marker': 'p', 'linestyle': '--', 'label': 'Adaptive MMSE'},
         'hybrid': {'color': 'brown', 'marker': 'h', 'linestyle': '--', 'label': 'Hybrid'}
     }
@@ -125,7 +125,7 @@ def plot_all_detectors_comparison(snr_db_list, all_results_dict, gamma_opt, gamm
                         markeredgewidth=2)
     
     # Group 2: Enhanced detectors
-    for detector in ['ml_zf', 'adaptive_mmse', 'hybrid']:
+    for detector in ['adaptive_zf', 'adaptive_mmse', 'hybrid']:
         if detector in all_results_dict:
             style = detector_styles[detector]
             ber_values = all_results_dict[detector][0]
