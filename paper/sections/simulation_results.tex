@@ -1,5 +1,5 @@
 \section{Simulation Results and Analysis}
-We evaluate the performance of our proposed STBCs through extensive Monte Carlo simulations in a 4x4 MIMO system (\(N_t = N_r = 4\)) under quasi-static Rayleigh fading conditions. The simulations are conducted with 100 independent channel realizations per SNR point, across an SNR range of 0 to 10 dB. We assume perfect channel state information (CSI) at the receiver and employ various detection algorithms, including maximum likelihood (ML), minimum mean square error (MMSE), zero-forcing (ZF), and several enhanced variants. The transmitted symbols are drawn from a QPSK constellation, normalized to unit energy per symbol.
+We evaluate the performance of our proposed STBCs through extensive Monte Carlo simulations in a 4x4 MIMO system (\(N_t = N_r = 4\)) under quasi-static Rayleigh fading conditions. The simulations are conducted with 30,000 independent channel realizations per SNR point, across an SNR range of 0 to 20 dB. We assume perfect channel state information (CSI) at the receiver and employ various detection algorithms, including maximum likelihood (ML), minimum mean square error (MMSE), zero-forcing (ZF), and several enhanced variants. The transmitted symbols are drawn from a QPSK constellation, normalized to unit energy per symbol.
 
 We compare three schemes to highlight the benefits of our optimization and the tunable-rate framework. The parameters for these schemes are summarized in Table \ref{tab:params}. The "Optimized Code" uses the \(\gamma_{opt}\) found from our numerical search, the "Non-Optimized" uses a typical literature value for algebraic independence, and the "Robust Code" is the rate-1 design with \(q_2 = 0\).
 
@@ -18,18 +18,18 @@ Poor Code & 2 & QPSK & \(3 + 0.3i\) \\
 \end{tabular}
 \end{table}
 
-We evaluated the performance of seven different detection algorithms on the optimized, standard, and poor code configurations. The detectors include: Maximum Likelihood (ML), Minimum Mean Square Error (MMSE), Zero Forcing (ZF), Regularized Zero Forcing (ZF-REG), ML-Enhanced Zero Forcing (ML-ZF), Adaptive MMSE, and Hybrid detection. Fig. \ref{fig:ml_plot}, Fig. \ref{fig:mmse_plot}, Fig. \ref{fig:zf_plot}, and Fig. \ref{fig:zf_reg_plot} present the BER performance for these detectors as a function of SNR. The key observations are as follows:
+We evaluated the performance of seven different detection algorithms on the optimized, standard, and poor code configurations. The detectors include: Maximum Likelihood (ML), Minimum Mean Square Error (MMSE), Zero Forcing (ZF), Regularized Zero Forcing (ZF-REG), Adaptive Zero Forcing (Adaptive ZF), Adaptive MMSE, and Hybrid detection. Fig. \ref{fig:ml_plot}, Fig. \ref{fig:mmse_plot}, Fig. \ref{fig:zf_plot}, and Fig. \ref{fig:zf_reg_plot} present the BER performance for these detectors as a function of SNR. The key observations are as follows:
 \begin{itemize}
-    \item \textbf{ML Detection Performance:} For ML detection (Fig. \ref{fig:ml_plot}), the optimized code (\(\gamma = -i\)) consistently outperforms the standard and poor codes. By SNR = 6 dB, the optimized code achieves error-free transmission (within our simulation limits), while the poor code (\(\gamma = 3 + 0.3i\)) still shows a BER of 0.0125.
+    \item \textbf{ML Detection Performance:} For ML detection (Fig. \ref{fig:ml_plot}), the optimized code (\(\gamma = -i\)) achieves perfect error-free transmission at SNR = 10 dB and above within our simulation limits of 30,000 trials. The optimized code reaches error-free performance by SNR = 10 dB, demonstrating the theoretical optimality of ML detection when combined with proper algebraic parameter selection.
     
-    \item \textbf{MMSE Detection Performance:} For MMSE detection (Fig. \ref{fig:mmse_plot}), the gain from optimization is more pronounced. At SNR = 10 dB, the optimized code achieves a BER of 0.00125, while the standard code has a BER of 0.005 (a 4x improvement) and the poor code has a BER of 0.02625 (a 21x difference).
+    \item \textbf{MMSE Detection Performance:} For MMSE detection (Fig. \ref{fig:mmse_plot}), the gain from optimization is significant. At SNR = 10 dB, the optimized code achieves a BER of 0.0022 (2.2$\times$10$^{-3}$), demonstrating excellent performance with substantially lower complexity than ML detection. The average BER across all SNR points is 0.0132, representing only a 1.58$\times$ degradation compared to optimal ML performance.
     
-    \item \textbf{ZF Detection Sensitivity:} The ZF detector (Fig. \ref{fig:zf_plot}) shows extreme sensitivity to the choice of \(\gamma\). At SNR = 10 dB, the optimized code achieves a BER of 0.04625, the standard code 0.04375, and the poor code 0.07125, demonstrating that even basic ZF detection benefits from proper algebraic parameter selection.
+    \item \textbf{ZF Detection Sensitivity:} The ZF detector (Fig. \ref{fig:zf_plot}) shows the highest sensitivity to \(\gamma\) parameter selection among all tested detectors. At SNR = 10 dB, the optimized code achieves a BER of 0.128, while maintaining reasonable performance across the full SNR range. The average BER of 0.149 represents a 17.89$\times$ degradation compared to ML, highlighting the importance of enhanced detection methods for practical systems.
     
-    \item \textbf{ZF-REG Enhancement:} The regularized ZF detector (Fig. \ref{fig:zf_reg_plot}) significantly improves performance over standard ZF. The optimized code with ZF-REG achieves a BER of 0.00125 at SNR = 10 dB, comparable to MMSE and substantially better than standard ZF.
+    \item \textbf{ZF-REG Enhancement:} The regularized ZF detector (Fig. \ref{fig:zf_reg_plot}) provides substantial improvement over standard ZF detection. The optimized code with ZF-REG achieves a BER of 0.027 at SNR = 10 dB, representing a 5.84$\times$ degradation from ML performance but a significant 3.06$\times$ improvement over standard ZF detection.
 \end{itemize}
 
-To provide a comprehensive comparison of all detection methods, Fig. \ref{fig:all_detectors} shows the performance across all seven detectors for the optimized code (\(\gamma = -i\)). We observe that ML, ML-ZF, and Hybrid detectors achieve identical optimal performance, with error-free transmission at SNRs of 6 dB and above. The ZF-REG detector performs remarkably well for its computational simplicity, achieving near-ML performance at high SNRs. Standard MMSE and Adaptive MMSE show intermediate performance, while basic ZF detection lags significantly behind the other methods. Table \ref{tab:performance} provides a quantitative comparison of detector performance across all parameter configurations.
+To provide a comprehensive comparison of all detection methods, Fig. \ref{fig:all_detectors} shows the performance across all seven detectors for the optimized code (\(\gamma = -i\)). The results reveal a clear performance hierarchy: ML detection achieves optimal performance with error-free transmission at SNR $\geq$ 10 dB. Enhanced detectors including Adaptive MMSE (1.16$\times$ worse than ML) and Hybrid (1.30$\times$ worse than ML) provide near-optimal performance with reduced complexity. The Adaptive ZF detector, despite being 7.44$\times$ worse than ML on average, still significantly outperforms standard ZF by a factor of 2.4$\times$. Table \ref{tab:performance} provides a quantitative comparison of detector performance across all parameter configurations.
 
 \begin{figure}[!t]
 \centering
@@ -54,23 +54,51 @@ To provide a comprehensive comparison of all detection methods, Fig. \ref{fig:al
 
 \begin{figure}[!t]
 \centering
-\includegraphics[width=0.9\columnwidth]{figures/zf_reg_detection.png} 
+\includegraphics[width=0.9\columnwidth]{figures/zf_reg_detection.png}
 \caption{BER performance comparison with Regularized ZF detection using optimized, standard, and poor parameter choices.}
 \label{fig:zf_reg_plot}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
-\includegraphics[width=0.9\columnwidth]{figures/all_detectors_comparison.png} 
+\includegraphics[width=0.9\columnwidth]{figures/adaptive_zf_detection.png}
+\caption{BER performance comparison with Adaptive ZF detection using optimized, standard, and poor parameter choices.}
+\label{fig:adaptive_zf_plot}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.9\columnwidth]{figures/adaptive_mmse_detection.png}
+\caption{BER performance comparison with Adaptive MMSE detection using optimized, standard, and poor parameter choices.}
+\label{fig:adaptive_mmse_plot}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.9\columnwidth]{figures/hybrid_detection.png}
+\caption{BER performance comparison with Hybrid detection using optimized, standard, and poor parameter choices.}
+\label{fig:hybrid_plot}
+\end{figure}
+
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.9\columnwidth]{figures/all_detectors_comparison.png}
 \caption{Comparative performance of all seven detectors using the optimized parameter choice (\(\gamma = -i\)).}
 \label{fig:all_detectors}
 \end{figure}
 
 \begin{figure}[!t]
 \centering
-\includegraphics[width=0.95\columnwidth]{figures/performance_table.png} 
+\includegraphics[width=0.95\columnwidth]{figures/performance_table.png}
 \caption{Quantitative comparison of detector performance with coding gain benefits.}
 \label{tab:performance}
 \end{figure}
 
-These results validate the practical value of our framework and optimization method, demonstrating that algebraic parameter tuning yields substantial gains in real-world MIMO systems. The magnitude of these gains varies with detector complexity, with simpler detectors exhibiting greater sensitivity to proper algebraic optimization. This finding has significant practical implications, as it suggests that coding gain optimization is most critical in power-limited or computationally-constrained systems where optimal ML detection is not feasible.
+\begin{figure}[!t]
+\centering
+\includegraphics[width=0.95\columnwidth]{figures/all_detectors_table.png}
+\caption{Comprehensive performance summary table for all detection algorithms with timing analysis.}
+\label{tab:all_detectors}
+\end{figure}
+
+These results validate the practical value of our framework and optimization method, demonstrating that algebraic parameter tuning yields substantial gains in real-world MIMO systems. The comprehensive evaluation reveals that enhanced detection methods provide an excellent complexity-performance trade-off: Adaptive MMSE achieves 1.16× degradation from optimal ML performance while requiring only 0.52s average computation time compared to ML's 0.81s. Similarly, the Hybrid detector achieves 1.30× degradation with 0.50s computation time. For applications requiring the lowest complexity, standard MMSE provides reasonable performance (1.58× worse than ML) with the fastest computation at 0.49s per detection. The magnitude of performance degradation varies significantly with detector complexity, with basic ZF showing 17.89× degradation, emphasizing that coding gain optimization is most critical in power-limited or computationally-constrained systems where optimal ML detection is not feasible.

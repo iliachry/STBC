@@ -16,7 +16,7 @@ Specifically, our main contributions are:
 \begin{enumerate}
     \item A flexible framework for constructing tunable-rate 4x4 STBCs from biquaternion algebras, with rigorous mathematical proofs provided in the Appendix.
     \item A systematic method to optimize the coding gain by choosing the optimal \(\gamma\), including convergence analysis and performance bounds.
-    \item Comprehensive simulation results demonstrating that optimization yields modest BER gains under maximum likelihood (ML) detection (approximately $0.2 dB$), but more substantial gains under practical linear detection schemes, such as minimum mean square error (MMSE) and zero forcing (ZF), reaching up to $1.0 dB$ and $2.0 dB$ improvements respectively at a BER of \(10^{-5}\).
+    \item Comprehensive simulation results from 30,000-trial Monte Carlo simulations demonstrating that enhanced detection algorithms provide excellent complexity-performance trade-offs: Adaptive MMSE achieves only 1.16$\times$ degradation from optimal ML performance while requiring 36\% less computation time, while basic linear detectors like ZF show 17.89$\times$ degradation, highlighting the critical importance of proper algebraic optimization.
 \end{enumerate}
 
 These findings bridge the gap between the theoretical promise of algebraic coding and practical system performance, highlighting the importance of considering detection complexity when assessing the benefits of coding gain optimization.
