@@ -5,7 +5,7 @@ The framework guarantees full transmit diversity while enabling tunable
 transmission rates through rigorous left regular representation of algebraic elements. 
 Our core contributions include a comprehensive theoretical analysis of detector performance, deriving analytical BER expressions and complexity bounds for both classical and enhanced detection algorithms including Adaptive Zero Forcing, Adaptive MMSE, and Hybrid detection.
 By systematically optimizing the key algebraic parameter $\gamma$ that governs quaternion algebra interaction, we achieve significant coding gain improvements across all detection schemes.
-Extensive Monte Carlo simulations with 30,000 trials demonstrate that enhanced detectors provide excellent complexity-performance trade-offs:
-Adaptive MMSE achieves only 1.16× degradation from optimal ML performance while requiring 44\% less computation time, and Hybrid detection achieves 1.30× degradation with 43\% computational savings.
-Standard linear detectors show substantial variation, with MMSE performing 1.58× worse than ML but basic ZF degrading by 17.89×, highlighting the critical importance of proper algebraic optimization in practical MIMO systems.
+Extensive Monte Carlo simulations with 100,000 trials demonstrate that enhanced detectors provide excellent complexity-performance trade-offs:
+Adaptive MMSE achieves near-ML performance (BER = $6.63 \times 10^{-4}$ vs ML's 0 at 10 dB) while requiring 44\% less computation time, and Hybrid detection maintains excellent performance (BER = $9.98 \times 10^{-4}$ at 10 dB) with 43\% computational savings.
+Standard linear detectors show substantial variation, with MMSE achieving BER = $1.97 \times 10^{-3}$ at 10 dB while basic ZF shows significant degradation (BER = 0.127), highlighting the critical importance of proper algebraic optimization in practical MIMO systems.
 \end{abstract}
